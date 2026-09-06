@@ -1,0 +1,13 @@
+FROM nvcr.io/nvidia/tritonserver:24.01-py3-igpu
+
+# Set working directory inside container
+WORKDIR /opt/tritonserver
+
+# Copy local model repository into the container workspace
+COPY model_repository /opt/tritonserver/models
+
+# Expose Triton HTTP (8000), gRPC (8001), and Prometheus Metrics (8002) ports
+EXPOSE 8000 8001 8002
+
+# Start Triton Inference Server
+CMD ["tritonserver", "--model-repository=/opt/tritonserver/models", "--strict-model-config=false"]
