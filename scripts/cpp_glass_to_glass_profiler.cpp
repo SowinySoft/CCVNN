@@ -120,16 +120,16 @@ void export_json(const std::vector<LatencyBreakdown>& logs, const std::string& f
     std::ofstream out(filename);
     out << std::fixed << std::setprecision(4);
     out << "{\n";
-    out << "  "metadata": { "frames_profiled": " << logs.size() << " },\n";
-    out << "  "summary_ms": {\n";
-    out << "    "frame_acquisition": {"p50":" << s_cap.p50 << ","p95":" << s_cap.p95 << ","p99":" << s_cap.p99 << "},\n";
-    out << "    "spatial_extraction": {"p50":" << s_prep.p50 << ","p95":" << s_prep.p95 << ","p99":" << s_prep.p99 << "},\n";
-    out << "    "ccvnn_inference": {"p50":" << s_inf.p50 << ","p95":" << s_inf.p95 << ","p99":" << s_inf.p99 << "},\n";
-    out << "    "hysteresis_filter": {"p50":" << s_hyst.p50 << ","p95":" << s_hyst.p95 << ","p99":" << s_hyst.p99 << "},\n";
-    out << "    "gpio_relay": {"p50":" << s_gpio.p50 << ","p95":" << s_gpio.p95 << ","p99":" << s_gpio.p99 << "},\n";
-    out << "    "total_glass_to_glass": {"p50":" << s_tot.p50 << ","p95":" << s_tot.p95 << ","p99":" << s_tot.p99 << "}\n";
+    out << "  \"metadata\": { \"frames_profiled\": " << logs.size() << " },\n";
+    out << "  \"summary_ms\": {\n";
+    out << "    \"frame_acquisition\": {\"p50\":" << s_cap.p50 << ",\"p95\":" << s_cap.p95 << ",\"p99\":" << s_cap.p99 << "},\n";
+    out << "    \"spatial_extraction\": {\"p50\":" << s_prep.p50 << ",\"p95\":" << s_prep.p95 << ",\"p99\":" << s_prep.p99 << "},\n";
+    out << "    \"ccvnn_inference\": {\"p50\":" << s_inf.p50 << ",\"p95\":" << s_inf.p95 << ",\"p99\":" << s_inf.p99 << "},\n";
+    out << "    \"hysteresis_filter\": {\"p50\":" << s_hyst.p50 << ",\"p95\":" << s_hyst.p95 << ",\"p99\":" << s_hyst.p99 << "},\n";
+    out << "    \"gpio_relay\": {\"p50\":" << s_gpio.p50 << ",\"p95\":" << s_gpio.p95 << ",\"p99\":" << s_gpio.p99 << "},\n";
+    out << "    \"total_glass_to_glass\": {\"p50\":" << s_tot.p50 << ",\"p95\":" << s_tot.p95 << ",\"p99\":" << s_tot.p99 << "}\n";
     out << "  },\n";
-    out << "  "frame_totals_us": [";
+    out << "  \"frame_totals_us\": [";
     for (size_t i = 0; i < totals.size(); ++i) {
         out << totals[i] << (i + 1 < totals.size() ? "," : "");
     }
