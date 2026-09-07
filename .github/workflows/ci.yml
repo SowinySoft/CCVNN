@@ -103,3 +103,19 @@ jobs:
           path: |
             benchmark_results.json
             docs/glass_to_glass_latency.png
+
+      - name: Publish Benchmark Summary to Workflow Tab
+        run: |
+          python3 -c "
+          import json, os
+          with open('benchmark_results.json') as f:
+              data = json.load(f)['summary_ms']
+          
+          summary_file = os.environ['GITHUB_STEP_SUMMARY']
+          with open(summary_file, 'a') as f:
+              f.write('### 🚀 CCVNN Glass-to-Glass Latency Summary\n\n')
+              f.write('| Pipeline Stage | p50 (ms) | p95 (ms) | p99 (ms) |\n')
+              f.write('|---|---|---|---|\n')
+              for k, v in data.items():
+                  f.write(f'| **{k}** | {v[\"p50\"]:.3f} | {v[\"p95\"]:.3f} | {v[\"p99\"]:.3f} |\n')
+          "
