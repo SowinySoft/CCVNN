@@ -27,19 +27,20 @@ int main(int argc, char** argv) {
         cap.open(video_path);
     }
 
-    // Pre-allocated frame buffers
-    cv::Mat raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
+    cv::Mat raw_frame;
     cv::Mat resized_frame = cv::Mat::zeros(32, 32, CV_8UC3);
 
-    std::vector<double> totals_us, frame_acq_us, spatial_ext_us, inference_us;
-
-    // Warmup cycles
+    // Warmup
     for (int i = 0; i < 20; ++i) {
         if (cap.isOpened()) cap >> raw_frame;
+        if (raw_frame.empty()) raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
+        
         cv::resize(raw_frame, resized_frame, cv::Size(32, 32));
         auto input = torch::rand({1, 9});
         module.forward({input});
     }
+
+    std::vector<double> totals_us, frame_acq_us, spatial_ext_us, inference_us;
 
     // Benchmark loop
     for (int i = 0; i < num_frames; ++i) {
@@ -47,6 +48,9 @@ int main(int argc, char** argv) {
 
         if (cap.isOpened()) {
             cap >> raw_frame;
+        }
+        if (raw_frame.empty()) {
+            raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
         }
         auto t1 = std::chrono::high_resolution_clock::now();
 
