@@ -1,44 +1,43 @@
 name: Build & Release CCVNN Edge Bundle
-
-on:
+true:
   push:
     tags:
-      - 'v*'
-
+    - v*
 permissions:
   contents: write
-
 jobs:
   release:
     name: Build Binaries and Publish Release Asset
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Install Build Dependencies & PyTorch CPU
+      run: 'sudo apt-get update -qq
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+        sudo apt-get install -y -qq build-essential libopencv-dev pkg-config
 
-      - name: Install Build Dependencies & PyTorch CPU
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq build-essential libopencv-dev pkg-config
-          pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
+        pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Compile C++ Edge Engine Binaries
-        run: |
-          mkdir -p build
-          
-          ABI_FLAG="-D_GLIBCXX_USE_CXX11_ABI=$(python3 -c 'import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')"
-          INCLUDES=$(python3 -c "import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for p in e.include_paths()]))")
-          LIBS=$(python3 -c "import torch.utils.cpp_extension as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')")
-          RPATH=$(python3 -c "import torch.utils.cpp_extension as e; print('-Wl,-rpath,' + e.library_paths()[0])")
+        '
+    - name: Compile C++ Edge Engine Binaries
+      run: "mkdir -p build\n\nABI_FLAG=\"-D_GLIBCXX_USE_CXX11_ABI=$(python3 -c 'import\
+        \ torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')\"\nINCLUDES=$(python3\
+        \ -c \"import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for\
+        \ p in e.include_paths()]))\")\nLIBS=$(python3 -c \"import torch.utils.cpp_extension\
+        \ as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')\"\
+        )\nRPATH=$(python3 -c \"import torch.utils.cpp_extension as e; print('-Wl,-rpath,'\
+        \ + e.library_paths()[0])\")\n\ng++ -O3 -std=c++20 $ABI_FLAG scripts/cpp_glass_to_glass_profiler.cpp\
+        \ -o build/cpp_glass_to_glass_profiler \\\n  $INCLUDES $LIBS $RPATH $(pkg-config\
+        \ --cflags --libs opencv4) -pthread\n\ng++ -O3 -std=c++20 $ABI_FLAG scripts/v4l2_camera_profiler.cpp\
+        \ -o build/v4l2_camera_profiler \\\n  $INCLUDES $LIBS $RPATH $(pkg-config\
+        \ --cflags --libs opencv4) -pthread\n"
+    - name: Generate Latency Plot Visualizations
+      run: 'python3 scripts/plot_benchmark.py
 
-          g++ -O3 -std=c++20 $ABI_FLAG scripts/cpp_glass_to_glass_profiler.cpp -o build/cpp_glass_to_glass_profiler \
-            $INCLUDES $LIBS $RPATH $(pkg-config --cflags --libs opencv4) -pthread
-
-          g++ -O3 -std=c++20 $ABI_FLAG scripts/v4l2_camera_profiler.cpp -o build/v4l2_camera_profiler \
-            $INCLUDES $LIBS $RPATH $(pkg-config --cflags --libs opencv4) -pthread
+        mkdir -p docs\scp public/benchmark_plot.png docs/glass_to_glass_latency.png
+        || cp public/benchmark_plot.png docs/glass_to_glass_latency.png'
