@@ -8,6 +8,7 @@
 #include <chrono>
 #include <algorithm>
 #include <fstream>
+#include <iomanip>
 
 using Clock = std::chrono::high_resolution_clock;
 using DurationUs = std::chrono::duration<double, std::micro>;
@@ -21,7 +22,6 @@ struct LatencyBreakdown {
     double total_glass_to_glass_us;
 };
 
-// Mock/Sysfs GPIO Relay Interface
 class GPIORelay {
 private:
     int gpio_pin_;
@@ -31,15 +31,12 @@ public:
     GPIORelay(int pin = 18, bool enable_hw = false) : gpio_pin_(pin), hardware_enabled_(enable_hw) {}
 
     void trigger(bool pass) {
-        auto t0 = Clock::now();
         if (hardware_enabled_) {
-            // High-speed GPIO toggle via sysfs or libgpiod
             std::ofstream gpio_val("/sys/class/gpio/gpio" + std::to_string(gpio_pin_) + "/value");
             if (gpio_val.is_open()) {
                 gpio_val << (pass ? "1" : "0");
             }
         } else {
-            // Microsecond volatile memory write simulation
             volatile int signal = pass ? 1 : 0;
             (void)signal;
         }
@@ -90,14 +87,53 @@ std::vector<float> extract_features(const cv::Mat& frame) {
     };
 }
 
-void print_percentiles(std::vector<double>& v, const std::string& name) {
+struct Stats { double p50; double p95; double p99; };
+
+Stats calc_stats(std::vector<double> v) {
     std::sort(v.begin(), v.end());
     size_t n = v.size();
-    double p50 = v[n * 0.50];
-    double p95 = v[n * 0.95];
-    double p99 = v[n * 0.99];
-    std::cout << "  " << name << " -> p50: " << p50 / 1000.0 << " ms | p95: " 
-              << p95 / 1000.0 << " ms | p99: " << p99 / 1000.0 << " ms\n";
+    return { v[n * 0.50] / 1000.0, v[n * 0.95] / 1000.0, v[n * 0.99] / 1000.0 };
+}
+
+void export_json(const std::vector<LatencyBreakdown>& logs, const std::string& filename) {
+    std::vector<double> caps, preps, infs, hysts, gpios, totals;
+    for (const auto& l : logs) {
+        caps.push_back(l.frame_cap_us);
+        preps.push_back(l.feature_extract_us);
+        infs.push_back(l.inference_us);
+        hysts.push_back(l.hysteresis_us);
+        gpios.push_back(l.gpio_trigger_us);
+        totals.push_back(l.total_glass_to_glass_us);
+    }
+
+    Stats s_cap = calc_stats(caps);
+    Stats s_prep = calc_stats(preps);
+    Stats s_inf = calc_stats(infs);
+    Stats s_hyst = calc_stats(hysts);
+    Stats s_gpio = calc_stats(gpios);
+    Stats s_tot = calc_stats(totals);
+
+    std::ofstream out(filename);
+    out << std::fixed << std::setprecision(4);
+    out << "{\n";
+    out << "  "metadata": { "frames_profiled": " << logs.size() << " },\n";
+    out << "  "summary_ms": {\n";
+    out << "    "frame_acquisition": {"p50":" << s_cap.p50 << ","p95":" << s_cap.p95 << ","p99":" << s_cap.p99 << "},\n";
+    out << "    "spatial_extraction": {"p50":" << s_prep.p50 << ","p95":" << s_prep.p95 << ","p99":" << s_prep.p99 << "},\n";
+    out << "    "ccvnn_inference": {"p50":" << s_inf.p50 << ","p95":" << s_inf.p95 << ","p99":" << s_inf.p99 << "},\n";
+    out << "    "hysteresis_filter": {"p50":" << s_hyst.p50 << ","p95":" << s_hyst.p95 << ","p99":" << s_hyst.p99 << "},\n";
+    out << "    "gpio_relay": {"p50":" << s_gpio.p50 << ","p95":" << s_gpio.p95 << ","p99":" << s_gpio.p99 << "},\n";
+    out << "    "total_glass_to_glass": {"p50":" << s_tot.p50 << ","p95":" << s_tot.p95 << ","p99":" << s_tot.p99 << "}\n";
+    out << "  },\n";
+    out << "  "frame_totals_us": [";
+    for (size_t i = 0; i < totals.size(); ++i) {
+        out << totals[i] << (i + 1 < totals.size() ? "," : "");
+    }
+    out << "]\n";
+    out << "}\n";
+    out.close();
+
+    std::cout << "[✓] Exported benchmark JSON to: " << filename << std::endl;
 }
 
 int main(int argc, const char* argv[]) {
@@ -143,18 +179,15 @@ int main(int argc, const char* argv[]) {
     for (int i = 0; i < max_frames; ++i) {
         LatencyBreakdown lb;
 
-        // Stage 1: Frame Capture
         auto t0 = Clock::now();
         cap.read(frame);
         auto t1 = Clock::now();
         lb.frame_cap_us = std::chrono::duration_cast<DurationUs>(t1 - t0).count();
 
-        // Stage 2: Feature Extraction
         auto feat = extract_features(frame);
         auto t2 = Clock::now();
         lb.feature_extract_us = std::chrono::duration_cast<DurationUs>(t2 - t1).count();
 
-        // Stage 3: Inference
         torch::Tensor input_tensor = torch::from_blob(feat.data(), {1, 9}, torch::kFloat32);
         std::vector<torch::IValue> inputs = {input_tensor};
         torch::Tensor output = module.forward(inputs).toTensor();
@@ -163,12 +196,10 @@ int main(int argc, const char* argv[]) {
         auto t3 = Clock::now();
         lb.inference_us = std::chrono::duration_cast<DurationUs>(t3 - t2).count();
 
-        // Stage 4: Hysteresis Filter
         bool decision = filter.process(score);
         auto t4 = Clock::now();
         lb.hysteresis_us = std::chrono::duration_cast<DurationUs>(t4 - t3).count();
 
-        // Stage 5: Relay Trigger
         relay.trigger(decision);
         auto t5 = Clock::now();
         lb.gpio_trigger_us = std::chrono::duration_cast<DurationUs>(t5 - t4).count();
@@ -177,28 +208,6 @@ int main(int argc, const char* argv[]) {
         logs.push_back(lb);
     }
 
-    std::cout << "\n======================================================\n";
-    std::cout << "        GLASS-TO-GLASS LATENCY AUDIT REPORT           \n";
-    std::cout << "======================================================\n";
-
-    std::vector<double> caps, preps, infs, hysts, gpios, totals;
-    for (const auto& l : logs) {
-        caps.push_back(l.frame_cap_us);
-        preps.push_back(l.feature_extract_us);
-        infs.push_back(l.inference_us);
-        hysts.push_back(l.hysteresis_us);
-        gpios.push_back(l.gpio_trigger_us);
-        totals.push_back(l.total_glass_to_glass_us);
-    }
-
-    print_percentiles(caps,   "1. Frame Acquisition  ");
-    print_percentiles(preps,  "2. Spatial Extraction ");
-    print_percentiles(infs,   "3. CCVNN Forward Pass ");
-    print_percentiles(hysts,  "4. Hysteresis Filter  ");
-    print_percentiles(gpios,  "5. GPIO Relay Output  ");
-    std::cout << "------------------------------------------------------\n";
-    print_percentiles(totals, "TOTAL Glass-To-Glass  ");
-    std::cout << "======================================================\n";
-
+    export_json(logs, "benchmark_results.json");
     return 0;
 }
