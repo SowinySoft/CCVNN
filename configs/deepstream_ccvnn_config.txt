@@ -1,0 +1,17 @@
+# NVIDIA DeepStream Gst-nvinferserver Configuration for CCVNN Inspector
+infer_config {
+  unique_id: 10
+  gpu_ids: [0]
+  max_batch_size: 1
+  backend {
+    triton {
+      model_name: "ccvnn_inspector"
+      version: -1
+      model_repository_path: "./model_repository"
+    }
+  }
+}
+
+extra {
+  copy_input_to_host_buffers: false
+}
