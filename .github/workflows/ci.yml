@@ -119,3 +119,27 @@ jobs:
               for k, v in data.items():
                   f.write(f'| **{k}** | {v[\"p50\"]:.3f} | {v[\"p95\"]:.3f} | {v[\"p99\"]:.3f} |\n')
           "
+
+      - name: Generate Plotly Dashboard HTML
+        run: |
+          pip install plotly
+          python3 scripts/generate_dashboard.py
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'public/'
+
+  deploy-dashboard:
+    needs: validate-and-benchmark
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
