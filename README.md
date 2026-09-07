@@ -1,18 +1,20 @@
-# Coordinate Vector Neural Network (CCVNN)
+# CCVNN: Co-Coordinate Vector Neural Network Inspection Engine
 
-Sub-millisecond edge inspection engine for industrial AOI & robotics via NVIDIA DeepStream & Triton.
+[![Model Architecture](https://img.shields.io/badge/Architecture-9--32--32--2%20ReLU6-blue.svg)](#architecture-topology)
+[![Latency](https://img.shields.io/badge/Latency%20p50-0.039ms-success.svg)](#key-performance-benchmarks)
+[![Triton Backend](https://img.shields.io/badge/Triton-LibTorch%20C%2B%2B-orange.svg)](#triton-inference-server-deployment)
+[![Stability](https://img.shields.io/badge/Jitter%20Stability-100%25-brightgreen.svg)](#noise-robustness--hysteresis-guardrail)
 
-## Key Performance Metrics
-- **Mean Latency**: 0.013 ms (ORT) / 0.555 ms (Jetson Orin Engine)
-- **Throughput**: 1,800+ FPS (Jetson Orin) / 75,000+ FPS (IPC Benchmark)
-- **Engine Footprint**: 0.32 MB TensorRT / ONNX engine
+**CCVNN** is an ultra-low latency, micro-inspection neural classifier engineered for real-time industrial line-scan and conveyor visual quality control pipelines.
 
-## Repository Architecture
-- `deepstream/`: NVIDIA DeepStream zero-copy CUDA pipeline & configuration.
-- `model_repository/`: Triton Inference Server repository hierarchy (`config.pbtxt` & ONNX model).
-- `triton_grpc_client.py`: High-speed gRPC IPC benchmark client.
-- `index.html`: Technical whitepaper landing page for GitHub Pages.
+## Key Performance Benchmarks
 
-## Licensing
-- **AGPLv3**: Open-source for non-commercial community and research use.
-- **Commercial**: Closed-source OEM embedding and enterprise deployment.
+| Metric / Parameter | Value / Performance | Status |
+| :--- | :--- | :--- |
+| **Model Topology** | 9 -> 32 -> 32 -> 2 (ReLU6) | Locked & Verified |
+| **Core Kernel Latency (p50)** | **0.0390 ms** (39 microseconds) | Exceeds target |
+| **Worst-Case Tail Latency (p99)** | **0.1970 ms** | Sub-millisecond floor |
+| **Full Pipeline Throughput** | **112.7 - 115.0 FPS** | Supports 60 Hz line-scan |
+| **Jitter Stability (+/- 5px)** | **100.00% (1,000 / 1,000 passes)** | Zero prediction drift |
+
+## Triton Inference Server Deployment
