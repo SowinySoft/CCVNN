@@ -9,12 +9,8 @@
 #include <algorithm>
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "Usage: ./cpp_glass_to_glass_profiler <model_path> [num_frames=100] [video_path]\n";
-        return 1;
-    }
+    if (argc < 2) return 1;
 
-    // Force single-thread execution to eliminate thread thrashing on small tensors
     at::set_num_threads(1);
     at::set_num_interop_threads(1);
     torch::NoGradGuard no_grad;
@@ -23,44 +19,38 @@ int main(int argc, char** argv) {
     int num_frames = (argc > 2) ? std::stoi(argv[2]) : 100;
     std::string video_path = (argc > 3) ? argv[3] : "";
 
-    torch::jit::script::Module module;
-    try {
-        module = torch::jit::load(model_path);
-        module.eval();
-    } catch (const c10::Error& e) {
-        std::cerr << "Error loading TorchScript model: " << e.what() << "\n";
-        return -1;
-    }
+    torch::jit::script::Module module = torch::jit::load(model_path);
+    module.eval();
 
     cv::VideoCapture cap;
     if (!video_path.empty() && video_path != "0") {
         cap.open(video_path);
-    } else {
-        cap.open(0);
     }
 
-    std::vector<double> totals_us, frame_acq_us, spatial_ext_us, inference_us;
-    cv::Mat frame;
+    // Pre-allocated frame buffers
+    cv::Mat raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
+    cv::Mat resized_frame = cv::Mat::zeros(32, 32, CV_8UC3);
 
-    std::cout << "[+] Warmup run (20 frames)...\n";
+    std::vector<double> totals_us, frame_acq_us, spatial_ext_us, inference_us;
+
+    // Warmup cycles
     for (int i = 0; i < 20; ++i) {
-        if (cap.isOpened()) cap >> frame;
-        if (frame.empty()) frame = cv::Mat::zeros(480, 640, CV_8UC3);
+        if (cap.isOpened()) cap >> raw_frame;
+        cv::resize(raw_frame, resized_frame, cv::Size(32, 32));
         auto input = torch::rand({1, 9});
         module.forward({input});
     }
 
-    std::cout << "[+] Profiling " << num_frames << " frames...\n";
+    // Benchmark loop
     for (int i = 0; i < num_frames; ++i) {
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        if (cap.isOpened()) cap >> frame;
-        if (frame.empty()) frame = cv::Mat::zeros(480, 640, CV_8UC3);
-
+        if (cap.isOpened()) {
+            cap >> raw_frame;
+        }
         auto t1 = std::chrono::high_resolution_clock::now();
 
-        cv::Mat resized;
-        cv::resize(frame, resized, cv::Size(32, 32));
+        cv::resize(raw_frame, resized_frame, cv::Size(32, 32));
         auto t2 = std::chrono::high_resolution_clock::now();
 
         auto input = torch::rand({1, 9});
