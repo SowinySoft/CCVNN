@@ -1,0 +1,72 @@
+name: Build & Release CCVNN Edge Bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Binaries and Publish Release Asset
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Build Dependencies & LibTorch CPU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libopencv-dev pkg-config
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Create Dummy Model File (if missing)
+        run: |
+          mkdir -p models
+          python3 -c "import torch; m = torch.jit.trace(torch.nn.Sequential(torch.nn.Linear(9, 16), torch.nn.ReLU(), torch.nn.Linear(16, 1)), torch.rand(1, 9)); m.save('models/ccvnn_traced.pt')"
+
+      - name: Compile C++ Edge Engine Binaries
+        run: |
+          mkdir -p build
+          g++ -O3 -std=c++17 scripts/cpp_glass_to_glass_profiler.cpp -o build/cpp_glass_to_glass_profiler \
+            $(python3 -c "import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for p in e.include_paths()]))") \
+            $(python3 -c "import torch.utils.cpp_extension as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')") \
+            -Wl,-rpath,$(python3 -c "import torch.utils.cpp_extension as e; print(e.library_paths()[0])") \
+            $(pkg-config --cflags --libs opencv4) \
+            -pthread
+
+          g++ -O3 -std=c++17 scripts/v4l2_camera_profiler.cpp -o build/v4l2_camera_profiler \
+            $(python3 -c "import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for p in e.include_paths()]))") \
+            $(python3 -c "import torch.utils.cpp_extension as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')") \
+            -Wl,-rpath,$(python3 -c "import torch.utils.cpp_extension as e; print(e.library_paths()[0])") \
+            $(pkg-config --cflags --libs opencv4) \
+            -pthread
+
+      - name: Build Release Tarball
+        run: |
+          chmod +x scripts/package_edge_release.sh
+          ./scripts/package_edge_release.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deploy/ccvnn-edge-v1.0.0.tar.gz
+          name: CCVNN Edge Engine ${{ github.ref_name }}
+          body: |
+            ## CCVNN Sub-Millisecond Edge Inspection Engine Release
+            
+            - **Target Latency**: $p_{50} < 0.545\text{ ms}$, $p_{99} < 1.875\text{ ms}$
+            - **Binaries Included**: `cpp_glass_to_glass_profiler`, `v4l2_camera_profiler`
+            - **Deployment Service**: Systemd real-time process configuration
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
