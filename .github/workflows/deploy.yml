@@ -22,11 +22,11 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Build Dependencies & LibTorch CPU
+      - name: Install Build Dependencies & PyTorch CPU
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential libopencv-dev pkg-config
-          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Create Dummy Model File (if missing)
         run: |
@@ -37,15 +37,15 @@ jobs:
         run: |
           mkdir -p build
           
-          CXXFLAGS=$(python3 -c "import torch.utils.cpp_extension as e; print(' '.join(e.cxxflags()))")
+          ABI_FLAG="-D_GLIBCXX_USE_CXX11_ABI=$(python3 -c 'import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')"
           INCLUDES=$(python3 -c "import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for p in e.include_paths()]))")
           LIBS=$(python3 -c "import torch.utils.cpp_extension as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')")
           RPATH=$(python3 -c "import torch.utils.cpp_extension as e; print('-Wl,-rpath,' + e.library_paths()[0])")
 
-          g++ -O3 -std=c++17 $CXXFLAGS scripts/cpp_glass_to_glass_profiler.cpp -o build/cpp_glass_to_glass_profiler \
+          g++ -O3 -std=c++17 $ABI_FLAG scripts/cpp_glass_to_glass_profiler.cpp -o build/cpp_glass_to_glass_profiler \
             $INCLUDES $LIBS $RPATH $(pkg-config --cflags --libs opencv4) -pthread
 
-          g++ -O3 -std=c++17 $CXXFLAGS scripts/v4l2_camera_profiler.cpp -o build/v4l2_camera_profiler \
+          g++ -O3 -std=c++17 $ABI_FLAG scripts/v4l2_camera_profiler.cpp -o build/v4l2_camera_profiler \
             $INCLUDES $LIBS $RPATH $(pkg-config --cflags --libs opencv4) -pthread
 
       - name: Build Release Tarball
