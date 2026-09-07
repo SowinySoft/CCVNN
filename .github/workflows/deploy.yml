@@ -37,7 +37,10 @@ jobs:
         \ -o build/v4l2_camera_profiler \\\n  $INCLUDES $LIBS $RPATH $(pkg-config\
         \ --cflags --libs opencv4) -pthread\n"
     - name: Generate Latency Plot Visualizations
-      run: 'python3 scripts/plot_benchmark.py
-
-        mkdir -p docs\scp public/benchmark_plot.png docs/glass_to_glass_latency.png
-        || cp public/benchmark_plot.png docs/glass_to_glass_latency.png'
+      run: "python3 -c \"\nimport json, os\nwith open('benchmark_results.json') as\
+        \ f:\n    data = json.load(f)['summary_ms']\n\nsummary_file = os.environ['GITHUB_STEP_SUMMARY']\n\
+        with open(summary_file, 'a') as f:\n    f.write('### \U0001F680 CCVNN Glass-to-Glass\
+        \ Latency Summary\\n\\n')\n    f.write('| Pipeline Stage | p50 (ms) | p99\
+        \ (ms) |\\n')\n    f.write('|---|---|---|\\n')\n    for k, v in data.items():\n\
+        \        f.write(f'| **{k}** | {v.get(\"p50\", 0):.3f} | {v.get(\"p99\", 0):.3f}\
+        \ |\\n')\n\"\n"
