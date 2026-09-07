@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ccvnn-triton-deployment
+  labels:
+    app: ccvnn-inspector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ccvnn-inspector
+  template:
+    metadata:
+      labels:
+        app: ccvnn-inspector
+    spec:
+      containers:
+      - name: tritonserver
+        image: nvcr.io/nvidia/tritonserver:24.01-py3
+        args: ["tritonserver", "--model-repository=/models"]
+        ports:
+        - containerPort: 8000
+          name: http
+        - containerPort: 8001
+          name: grpc
+        - containerPort: 8002
+          name: metrics
+        volumeMounts:
+        - name: model-repository-volume
+          mountPath: /models
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        readinessProbe:
+          httpGet:
+            path: /v2/health/ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: model-repository-volume
+        persistentVolumeClaim:
+          claimName: ccvnn-models-pvc

@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:24.01-py3
+    container_name: ccvnn_triton_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000" # HTTP
+      - "8001:8001" # gRPC
+      - "8002:8002" # Metrics
+    volumes:
+      - ./model_repository:/models
+    command: ["tritonserver", "--model-repository=/models", "--strict-model-config=false"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  ccvnn-stream-client:
+    image: python:3.10-slim
+    container_name: ccvnn_stream_client
+    depends_on:
+      triton-server:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/app/scripts
+    working_dir: /app
+    command: >
+      bash -c "pip install --no-cache-dir 'tritonclient[grpc]' numpy torch &&
+               python3 scripts/triton_client_stream.py --server-url triton-server:8001"
