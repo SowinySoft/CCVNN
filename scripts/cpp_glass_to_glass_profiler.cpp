@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iomanip>
+#include <cctype>
 
 using Clock = std::chrono::high_resolution_clock;
 using DurationUs = std::chrono::duration<double, std::micro>;
@@ -58,6 +59,8 @@ public:
 };
 
 std::vector<float> extract_features(const cv::Mat& frame) {
+    if (frame.empty()) return std::vector<float>(9, 0.0f);
+
     cv::Mat gray, thresh;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::threshold(gray, thresh, 100, 255, cv::THRESH_BINARY);
@@ -90,6 +93,7 @@ std::vector<float> extract_features(const cv::Mat& frame) {
 struct Stats { double p50; double p95; double p99; };
 
 Stats calc_stats(std::vector<double> v) {
+    if (v.empty()) return {0.0, 0.0, 0.0};
     std::sort(v.begin(), v.end());
     size_t n = v.size();
     return { v[n * 0.50] / 1000.0, v[n * 0.95] / 1000.0, v[n * 0.99] / 1000.0 };
@@ -136,27 +140,34 @@ void export_json(const std::vector<LatencyBreakdown>& logs, const std::string& f
     std::cout << "[✓] Exported benchmark JSON to: " << filename << std::endl;
 }
 
+bool is_number(const std::string& s) {
+    return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
+}
+
 int main(int argc, const char* argv[]) {
     if (argc < 2) {
-        std::cerr << "Usage: ./ccvnn_glass_profiler <model_path> [num_frames=500] [camera_id=0]\n";
+        std::cerr << "Usage: ./ccvnn_glass_profiler <model_path> [num_frames=500] [camera_id_or_video_path=0]\n";
         return -1;
     }
 
     std::string model_path = argv[1];
     int max_frames = (argc >= 3) ? std::stoi(argv[2]) : 500;
-    int camera_id = (argc >= 4) ? std::stoi(argv[3]) : 0;
+    std::string source = (argc >= 4) ? argv[3] : "0";
 
     torch::jit::script::Module module = torch::jit::load(model_path);
     module.eval();
 
-    cv::VideoCapture cap(camera_id);
-    if (!cap.isOpened()) {
-        std::cerr << "[!] Camera capture failed to initialize.\n";
-        return -1;
+    cv::VideoCapture cap;
+    if (is_number(source)) {
+        cap.open(std::stoi(source));
+    } else {
+        cap.open(source);
     }
 
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    if (!cap.isOpened()) {
+        std::cerr << "[!] Camera/Video source failed to initialize: " << source << "\n";
+        return -1;
+    }
 
     HysteresisFilter filter;
     GPIORelay relay(18, false);
@@ -165,9 +176,9 @@ int main(int argc, const char* argv[]) {
     std::vector<LatencyBreakdown> logs;
     logs.reserve(max_frames);
 
-    std::cout << "[+] Warmup run (50 frames)...\n";
-    for (int i = 0; i < 50; ++i) {
-        cap.read(frame);
+    std::cout << "[+] Warmup run (10 frames)...\n";
+    for (int i = 0; i < 10; ++i) {
+        if (!cap.read(frame)) break;
         auto feat = extract_features(frame);
         auto t = torch::from_blob(feat.data(), {1, 9}, torch::kFloat32);
         std::vector<torch::IValue> in = {t};
@@ -180,7 +191,11 @@ int main(int argc, const char* argv[]) {
         LatencyBreakdown lb;
 
         auto t0 = Clock::now();
-        cap.read(frame);
+        if (!cap.read(frame)) {
+            // Loop video feed if file ends before max_frames
+            cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+            if (!cap.read(frame)) break;
+        }
         auto t1 = Clock::now();
         lb.frame_cap_us = std::chrono::duration_cast<DurationUs>(t1 - t0).count();
 
