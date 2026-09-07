@@ -40,8 +40,7 @@ jobs:
       run: "python3 -c \"\nimport json, os\nwith open('benchmark_results.json') as\
         \ f:\n    data = json.load(f)['summary_ms']\n\nsummary_file = os.environ['GITHUB_STEP_SUMMARY']\n\
         with open(summary_file, 'a') as f:\n    f.write('### \U0001F680 CCVNN Glass-to-Glass\
-        \ Latency Summary\\n\\n')\n    f.write('| Pipeline Stage | p50 (ms) | p95\
-        \ (ms) | p99 (ms) |\\n')\n    f.write('|---|---|---|---|\\n')\n    for k,\
-        \ v in data.items():\n        p50 = v.get('p50', 0.0)\n        p95 = v.get('p95',\
-        \ 0.0)\n        p99 = v.get('p99', 0.0)\n        f.write(f'| **{k}** | {p50:.3f}\
-        \ | {p95:.3f} | {p99:.3f} |\\n')\n\"\n"
+        \ Latency Summary\\n\\n')\n    f.write('| Pipeline Stage | p50 (ms) | p99\
+        \ (ms) |\\n')\n    f.write('|---|---|---|\\n')\n    for k, v in data.items():\n\
+        \        p50 = v.get('p50', 0.0)\n        p99 = v.get('p99', 0.0)\n      \
+        \  f.write(f'| **{k}** | {p50:.3f} | {p99:.3f} |\\n')\n\"\n"
