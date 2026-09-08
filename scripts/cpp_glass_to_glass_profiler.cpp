@@ -1,94 +1,98 @@
-#include <torch/script.h>
-#include <ATen/Parallel.h>
 #include <opencv2/opencv.hpp>
-#include <chrono>
-#include <iostream>
-#include <fstream>
 #include <vector>
+#include <cmath>
 #include <numeric>
 #include <algorithm>
 
-int main(int argc, char** argv) {
-    if (argc < 2) return 1;
-
-    at::set_num_threads(1);
-    at::set_num_interop_threads(1);
-    torch::NoGradGuard no_grad;
-
-    std::string model_path = argv[1];
-    int num_frames = (argc > 2) ? std::stoi(argv[2]) : 100;
-    std::string video_path = (argc > 3) ? argv[3] : "";
-
-    torch::jit::script::Module module = torch::jit::load(model_path);
-    module.eval();
-
-    cv::VideoCapture cap;
-    if (!video_path.empty() && video_path != "0") {
-        cap.open(video_path);
+std::vector<float> extract12ElementFeatureVector(const cv::Mat& imagePatch) {
+    cv::Mat gray;
+    if (imagePatch.channels() == 3) {
+        cv::cvtColor(imagePatch, gray, cv::COLOR_BGR2GRAY);
+    } else {
+        gray = imagePatch.clone();
     }
 
-    cv::Mat raw_frame;
-    cv::Mat resized_frame = cv::Mat::zeros(32, 32, CV_8UC3);
+    // 1. Spatial Shape Qualities
+    cv::Mat gradX, gradY, absGradX, absGradY;
+    cv::Sobel(gray, gradX, CV_32F, 1, 0, 3);
+    cv::Sobel(gray, gradY, CV_32F, 0, 1, 3);
+    cv::convertScaleAbs(gradX, absGradX);
+    cv::convertScaleAbs(gradY, absGradY);
+    
+    cv::Mat gradSum;
+    cv::add(absGradX, absGradY, gradSum);
+    float edge1D = static_cast<float>(cv::mean(gradSum)[0]);
 
-    // Warmup
-    for (int i = 0; i < 20; ++i) {
-        if (cap.isOpened()) cap >> raw_frame;
-        if (raw_frame.empty()) raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
-        
-        cv::resize(raw_frame, resized_frame, cv::Size(32, 32));
-        auto input = torch::rand({1, 9});
-        module.forward({input});
-    }
+    cv::Mat canny;
+    cv::Canny(gray, canny, 50, 150);
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(canny, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    float area2D = (!contours.empty()) ? static_cast<float>(cv::contourArea(contours[0])) : 0.0f;
 
-    std::vector<double> totals_us, frame_acq_us, spatial_ext_us, inference_us;
+    cv::Scalar meanVal, stdDevVal;
+    cv::meanStdDev(gray, meanVal, stdDevVal);
+    float depth3D = static_cast<float>(stdDevVal[0]);
 
-    // Benchmark loop
-    for (int i = 0; i < num_frames; ++i) {
-        auto t0 = std::chrono::high_resolution_clock::now();
+    // 2. Crystal Layer Depth Factors (FFT)
+    cv::Mat grayFloat;
+    gray.convertTo(grayFloat, CV_32F);
+    cv::Mat padded;
+    int m = cv::getOptimalDFTSize(grayFloat.rows);
+    int n = cv::getOptimalDFTSize(grayFloat.cols);
+    cv::copyMakeBorder(grayFloat, padded, 0, m - grayFloat.rows, 0, n - grayFloat.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
 
-        if (cap.isOpened()) {
-            cap >> raw_frame;
+    cv::Mat planes[] = {padded, cv::Mat::zeros(padded.size(), CV_32F)};
+    cv::Mat complexI;
+    cv::merge(planes, 2, complexI);
+    cv::dft(complexI, complexI);
+
+    cv::split(complexI, planes);
+    cv::Mat mag;
+    cv::magnitude(planes[0], planes[1], mag);
+    mag += cv::Scalar::all(1);
+    cv::log(mag, mag);
+
+    cv::Scalar fftMean, fftStd;
+    cv::meanStdDev(mag, fftMean, fftStd);
+    float crystalPrimary = static_cast<float>(fftMean[0]);
+    float crystalSecondary = static_cast<float>(fftStd[0]);
+
+    double maxVal;
+    cv::minMaxLoc(mag, nullptr, &maxVal);
+    cv::Scalar totalSum = cv::sum(mag);
+    float phasePeriodicity = static_cast<float>(maxVal / (totalSum[0] + 1e-6));
+
+    // 3. Photometric & Opacity Dynamics
+    std::vector<uchar> flatPixels;
+    if (gray.isContinuous()) {
+        flatPixels.assign(gray.data, gray.data + gray.total());
+    } else {
+        for (int i = 0; i < gray.rows; ++i) {
+            flatPixels.insert(flatPixels.end(), gray.ptr<uchar>(i), gray.ptr<uchar>(i) + gray.cols);
         }
-        if (raw_frame.empty()) {
-            raw_frame = cv::Mat::ones(480, 640, CV_8UC3);
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-
-        cv::resize(raw_frame, resized_frame, cv::Size(32, 32));
-        auto t2 = std::chrono::high_resolution_clock::now();
-
-        auto input = torch::rand({1, 9});
-        auto output = module.forward({input});
-        auto t3 = std::chrono::high_resolution_clock::now();
-
-        frame_acq_us.push_back(std::chrono::duration<double, std::micro>(t1 - t0).count());
-        spatial_ext_us.push_back(std::chrono::duration<double, std::micro>(t2 - t1).count());
-        inference_us.push_back(std::chrono::duration<double, std::micro>(t3 - t2).count());
-        totals_us.push_back(std::chrono::duration<double, std::micro>(t3 - t0).count());
     }
+    std::sort(flatPixels.begin(), flatPixels.end());
 
-    auto calc_pct = [](std::vector<double> v, double p) {
-        std::sort(v.begin(), v.end());
-        int idx = static_cast<int>(p * v.size());
-        return v[std::min(idx, (int)v.size() - 1)] / 1000.0;
+    size_t idx10 = static_cast<size_t>(flatPixels.size() * 0.10);
+    size_t idx90 = static_cast<size_t>(flatPixels.size() * 0.90);
+    float darkness = static_cast<float>(flatPixels[idx10]);
+    float lightness = static_cast<float>(flatPixels[idx90]);
+    float opacityIndex = static_cast<float>(meanVal[0] / 255.0);
+
+    // 4. Auxiliary Spatial & Contrast Moments
+    double minPixelVal, maxPixelVal;
+    cv::minMaxLoc(gray, &minPixelVal, &maxPixelVal);
+    float localContrast = static_cast<float>(maxPixelVal - minPixelVal);
+    float densityVariance = static_cast<float>(stdDevVal[0] * stdDevVal[0]);
+
+    cv::Mat structProduct;
+    cv::multiply(gradX, gradY, structProduct);
+    float structuralMoment = static_cast<float>(cv::mean(structProduct)[0]);
+
+    return {
+        edge1D, area2D, depth3D,
+        crystalPrimary, crystalSecondary, phasePeriodicity,
+        lightness, darkness, opacityIndex,
+        localContrast, densityVariance, structuralMoment
     };
-
-    std::ofstream json_out("benchmark_results.json");
-    json_out << "{\n";
-    json_out << "  \"frame_totals_us\": [";
-    for (size_t i = 0; i < totals_us.size(); ++i) {
-        json_out << totals_us[i] << (i + 1 < totals_us.size() ? "," : "");
-    }
-    json_out << "],\n";
-    json_out << "  \"summary_ms\": {\n";
-    json_out << "    \"frame_acquisition\": {\"p50\": " << calc_pct(frame_acq_us, 0.5) << ", \"p99\": " << calc_pct(frame_acq_us, 0.99) << "},\n";
-    json_out << "    \"spatial_extraction\": {\"p50\": " << calc_pct(spatial_ext_us, 0.5) << ", \"p99\": " << calc_pct(spatial_ext_us, 0.99) << "},\n";
-    json_out << "    \"ccvnn_inference\": {\"p50\": " << calc_pct(inference_us, 0.5) << ", \"p99\": " << calc_pct(inference_us, 0.99) << "},\n";
-    json_out << "    \"total_glass_to_glass\": {\"p50\": " << calc_pct(totals_us, 0.5) << ", \"p99\": " << calc_pct(totals_us, 0.99) << "}\n";
-    json_out << "  }\n";
-    json_out << "}\n";
-    json_out.close();
-
-    std::cout << "[✓] Exported benchmark JSON to: benchmark_results.json\n";
-    return 0;
 }
