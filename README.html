@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CCVNN README</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; }
+  pre, code { background-color: #f6f8fa; border-radius: 6px; font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; }
+  pre { padding: 16px; overflow: auto; line-height: 1.45; }
+  code { padding: 0.2em 0.4em; font-size: 85%; }
+  pre code { padding: 0; }
+  h1, h2, h3 { border-bottom: 1px solid #eaecef; padding-bottom: .3em; }
+  table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+  th, td { border: 1px solid #dfe2e5; padding: 6px 13px; }
+  blockquote { border-left: 4px solid #dfe2e5; color: #6a737d; padding: 0 1em; margin: 0; }
+</style>
+</head>
+<body>
+
+<h1>CCVNN: Computer Vision Neural Network Microservice</h1>
+
+<p>
+  <a href="#"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Kubernetes-v1.28%2B-blue.svg" alt="Kubernetes"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Triton-Inference%20Server-76B900.svg" alt="NVIDIA Triton"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Helm-v3.0%2B-0F1689.svg" alt="Helm"></a>
+</p>
+
+<p>An enterprise-grade, edge-deployable computer vision microservice architecture leveraging <strong>NVIDIA Triton Inference Server</strong>, <strong>TensorRT INT8 acceleration</strong>, <strong>gRPC with Mutual TLS (mTLS)</strong> security, and <strong>Kubernetes Helm</strong> orchestration for multi-camera video stream processing.</p>
+
+<hr>
+
+<h2>🏗 System Architecture</h2>
+
+<pre>
+                      +------------------------------------------+
+                      |            Kubernetes Cluster            |
+                      |               (ccvnn-edge)               |
+                      |                                          |
++------------------+  |  +----------------+  +----------------+  |
+| Multi-Camera     |  |  |  gRPC Ingress  |  |    Triton      |  |
+| RTSP Ingestion   |---->|    Service     |->|   Inference    |  |
+| Client (mTLS)    |  |  |   (Port 8001)  |  |     Server     |  |
++------------------+  |  +----------------+  +-------+--------+  |
+                      |                              |           |
++------------------+  |  +----------------+          |           |
+| Prometheus /     |<----+  Metrics Svc   |<---------+           |
+| Grafana Loki     |  |  |   (Port 8002)  |                      |
++------------------+  |  +----------------+                      |
+                      +------------------------------------------+
+</pre>
+
+<p>The system operates across four dedicated stages:</p>
+<ol>
+  <li><strong>Model Optimization:</strong> TensorRT INT8 calibration and custom dynamic batching (<code>ccvnn_hardswish</code> / <code>ccvnn_relu6</code>).</li>
+  <li><strong>Ingestion Pipeline:</strong> Non-blocking multi-camera RTSP ingestion worker threads connecting over secure gRPC.</li>
+  <li><strong>Observability:</strong> Prometheus metric exporters (<code>nv_inference_request_success</code>) coupled with Grafana Loki structured logging.</li>
+  <li><strong>Security & Orchestration:</strong> Production Helm chart deployment backed by custom PKI mutual TLS (mTLS) certificate validation.</li>
+</ol>
+
+<hr>
+
+<h2>📁 Repository Structure</h2>
+
+<pre>
+CCVNN/
+├── certs/                        # PKI certificates & key generation scripts (Git ignored)
+│   ├── generate_certs.sh
+│   ├── ca.crt / ca.key
+│   ├── server.crt / server.key
+│   └── client.crt / client.key
+├── helm/                         # Production Kubernetes Helm chart & rendered manifests
+│   ├── ccvnn-microservice/       # Chart templates & values.yaml
+│   ├── namespace-ccvnn-edge.yaml
+│   ├── secret-ccvnn-tls.yaml
+│   └── rendered-edge-manifests.yaml
+├── model_repository/             # NVIDIA Triton Model Repository layout
+│   ├── ccvnn_hardswish/
+│   └── ccvnn_relu6/
+├── camera_config.py              # Heterogeneous RTSP URL builder
+├── rtsp_multicamera_ingestion.py # Multi-camera CPU ingestion pipeline
+├── rtsp_nvdec_multicamera.py     # Multi-camera Zero-Copy NVDEC pipeline
+├── rtsp_mtls_multicamera.py      # Secure mTLS multi-camera ingestion client
+└── README.md
+</pre>
+
+<hr>
+
+<h2>⚙️ Triton Inference Server Configuration</h2>
+
+<p>The microservice utilizes Triton's dynamic batching and INT8 TensorRT engine backends.</p>
+
+<h3>Model Repository Layout</h3>
+
+<pre>
+model_repository/
+├── ccvnn_hardswish/
+│   ├── config.pbtxt
+│   └── 1/
+│       └── model.plan
+└── ccvnn_relu6/
+    ├── config.pbtxt
+    └── 1/
+        └── model.plan
+</pre>
+
+<h3>Sample <code>config.pbtxt</code> (<code>ccvnn_hardswish</code>)</h3>
+
+<pre>
+name: "ccvnn_hardswish"
+platform: "tensorrt_plan"
+max_batch_size: 16
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 3, 224, 224 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 1000 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 4, 8, 16 ]
+  max_queue_delay_microseconds: 5000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+  }
+]
+</pre>
+
+<hr>
+
+<h2>🔒 mTLS Security Setup</h2>
+
+<p>Communication between client workers and the Triton gRPC server is encrypted and mutually authenticated via custom X.509 PKI certificates.</p>
+
+<h3>1. Generate PKI Certificates</h3>
+
+<pre><code>chmod +x certs/generate_certs.sh
+./certs/generate_certs.sh
+</code></pre>
+
+<h3>2. Verify Generated Certificate Assets</h3>
+
+<pre><code>ls -la certs/
+# Expected files: ca.crt, server.crt, server.key, client.crt, client.key
+</code></pre>
+
+<blockquote>
+  <p><strong>Security Note:</strong> Private key files (<code>*.key</code>, <code>*.csr</code>, <code>*.srl</code>) are ignored by <code>.gitignore</code> and must never be committed to source control.</p>
+</blockquote>
+
+<hr>
+
+<h2>🚀 Kubernetes & Helm Deployment</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+  <li><code>kubectl</code> (v1.28+)</li>
+  <li><code>helm</code> (v3.0+)</li>
+  <li>Active Kubernetes Edge Cluster (K3s, MicroK8s, or Minikube)</li>
+</ul>
+
+<h3>1. Create Namespace & Secret</h3>
+
+<pre><code># Create target namespace
+kubectl create namespace ccvnn-edge
+
+# Deploy mTLS Kubernetes Secret
+kubectl create secret generic ccvnn-microservice-tls \
+  --from-file=ca.crt=certs/ca.crt \
+  --from-file=server.crt=certs/server.crt \
+  --from-file=server.key=certs/server.key \
+  -n ccvnn-edge
+</code></pre>
+
+<h3>2. Offline Helm Manifest Verification (Dry-Run)</h3>
+
+<pre><code># Lint chart syntax
+helm lint helm/ccvnn-microservice/
+
+# Render dry-run manifests to file
+helm template ccvnn-edge-release helm/ccvnn-microservice/ \
+  --namespace ccvnn-edge \
+  > helm/rendered-edge-manifests.yaml
+</code></pre>
+
+<h3>3. Deploy Helm Release to Edge Cluster</h3>
+
+<pre><code>helm upgrade --install ccvnn-edge-release helm/ccvnn-microservice/ \
+  --namespace ccvnn-edge \
+  --set replicaCount=1 \
+  --set triton.logVerboseLevel=0 \
+  --wait --timeout 2m0s
+</code></pre>
+
+<h3>4. Verify Pod Readiness & Services</h3>
+
+<pre><code># Check running pods
+kubectl get pods -n ccvnn-edge -o wide
+
+# Verify exposed ports (HTTP: 8000, gRPC: 8001, Metrics: 8002)
+kubectl get svc -n ccvnn-edge
+
+# Test internal metrics endpoint
+POD_NAME=$(kubectl get pods -n ccvnn-edge -l app.kubernetes.io/name=ccvnn-microservice -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n ccvnn-edge $POD_NAME -- curl -s http://localhost:8002/metrics | grep nv_inference_request_success
+</code></pre>
+
+<hr>
+
+<h2>🧪 End-to-End Ingestion Testing</h2>
+
+<pre><code># Forward remote gRPC port
+kubectl port-forward -n ccvnn-edge svc/ccvnn-edge-release-ccvnn-microservice 8001:8001 &
+PF_PID=$!
+
+# Execute mTLS ingestion worker pipeline
+python3 rtsp_mtls_multicamera.py
+
+# Terminate port forwarding process
+kill $PF_PID
+</code></pre>
+
+<hr>
+
+<h2>📜 License</h2>
+<p>Distributed under the MIT License. See <code>LICENSE</code> for more information.</p>
+
+</body>
+</html>
