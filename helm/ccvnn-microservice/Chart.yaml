@@ -1,0 +1,14 @@
+apiVersion: v2
+name: ccvnn-microservice
+description: Helm chart for CCVNN Triton Inference Server & Microservice Platform
+type: application
+version: 1.2.0
+appVersion: "1.2.0"
+keywords:
+  - triton
+  - ccvnn
+  - computer-vision
+  - edge-ai
+maintainers:
+  - name: سعيد صويني
+    email: SowinySoft@gmail.com

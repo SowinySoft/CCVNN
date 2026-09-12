@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ccvnn-microservice.name" . }}-config
+  labels:
+    {{- include "ccvnn-microservice.labels" . | nindent 4 }}
+data:
+  config-gpu.pbtxt: |
+    name: "ccvnn_hardswish_12d"
+    platform: "onnxruntime_onnx"
+    max_batch_size: {{ .Values.triton.dynamicBatching.maxBatchSize }}
+    dynamic_batching {
+      preferred_batch_size: [ 4, 8, 16 ]
+      max_queue_delay_microseconds: {{ .Values.triton.dynamicBatching.maxQueueDelayMs }}
+    }
+    instance_group [
+      {
+        count: 2
+        kind: KIND_GPU
+        gpus: [ 0 ]
+      }
+    ]
