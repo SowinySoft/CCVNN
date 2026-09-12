@@ -1,0 +1,34 @@
+name: CCVNN Edge Deployment Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  validate-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Lint Helm Chart
+        run: |
+          helm lint helm/ccvnn-microservice/
+
+      - name: Test Helm Template Rendering
+        run: |
+          helm template ccvnn-release helm/ccvnn-microservice/ > rendered-manifests.yaml
+          cat rendered-manifests.yaml
+
+      - name: Python Script Syntax Check
+        run: |
+          python3 -m py_compile camera_config.py
+          python3 -m py_compile rtsp_multicamera_ingestion.py
+          python3 -m py_compile rtsp_nvdec_multicamera.py
