@@ -4,3 +4,6 @@ sample_data/
 *.mp4
 =======
 >>>>>>> 041380e (chore: ignore colab default runtime directories)
+certs/*.key
+certs/*.srl
+certs/*.csr
