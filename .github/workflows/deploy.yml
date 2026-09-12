@@ -1,46 +1,40 @@
-name: Build & Release CCVNN Edge Bundle
-"on":
+name: CCVNN Triton Microservice CI/CD
+
+on:
   push:
-    tags:
-    - v*
-permissions:
-  contents: write
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
 jobs:
-  release:
-    name: Build Binaries and Publish Release Asset
+  validate-and-benchmark:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Checkout Code
+    - name: Checkout Repository
       uses: actions/checkout@v4
-    - name: Set up Python
+
+    - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    - name: Install Build Dependencies & PyTorch CPU
-      run: 'sudo apt-get update -qq
 
-        sudo apt-get install -y -qq build-essential libopencv-dev pkg-config
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy tritonclient[grpc] pyyaml
 
-        pip install numpy torch --index-url https://download.pytorch.org/whl/cpu
+    - name: Validate Kubernetes Manifests
+      run: |
+        python3 -c "import yaml; yaml.safe_load(open('k8s/deployment.yaml')); yaml.safe_load(open('k8s/service.yaml')); print('k8s Manifests Valid!')"
 
-        '
-    - name: Compile C++ Edge Engine Binaries
-      run: "mkdir -p build\n\nABI_FLAG=\"-D_GLIBCXX_USE_CXX11_ABI=$(python3 -c 'import\
-        \ torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')\"\nINCLUDES=$(python3\
-        \ -c \"import torch.utils.cpp_extension as e; print(' '.join(['-I' + p for\
-        \ p in e.include_paths()]))\")\nLIBS=$(python3 -c \"import torch.utils.cpp_extension\
-        \ as e; print('-L' + e.library_paths()[0] + ' -ltorch -ltorch_cpu -lc10')\"\
-        )\nRPATH=$(python3 -c \"import torch.utils.cpp_extension as e; print('-Wl,-rpath,'\
-        \ + e.library_paths()[0])\")\n\ng++ -O3 -std=c++20 $ABI_FLAG scripts/cpp_glass_to_glass_profiler.cpp\
-        \ -o build/cpp_glass_to_glass_profiler \\\n  $INCLUDES $LIBS $RPATH $(pkg-config\
-        \ --cflags --libs opencv4) -pthread\n\ng++ -O3 -std=c++20 $ABI_FLAG scripts/v4l2_camera_profiler.cpp\
-        \ -o build/v4l2_camera_profiler \\\n  $INCLUDES $LIBS $RPATH $(pkg-config\
-        \ --cflags --libs opencv4) -pthread\n"
-    - name: Generate Latency Plot Visualizations
-      run: "python3 -c \"\nimport json, os\nwith open('benchmark_results.json') as\
-        \ f:\n    data = json.load(f)['summary_ms']\n\nsummary_file = os.environ['GITHUB_STEP_SUMMARY']\n\
-        with open(summary_file, 'a') as f:\n    f.write('### \U0001F680 CCVNN Glass-to-Glass\
-        \ Latency Summary\\n\\n')\n    f.write('| Pipeline Stage | p50 (ms) | p99\
-        \ (ms) |\\n')\n    f.write('|---|---|---|\\n')\n    for k, v in data.items():\n\
-        \        p50 = v.get('p50', 0.0)\n        p99 = v.get('p99', 0.0)\n      \
-        \  f.write(f'| **{k}** | {p50:.3f} | {p99:.3f} |\\n')\n\"\n"
+    - name: Build C++ DeepStream Probe Library
+      run: |
+        sudo apt-get update && sudo apt-get install -y libgstreamer1.0-dev
+        g++ -shared -fPIC -O3 ccvnn_ds_probe.cpp -o libccvnn_ds_probe.so $(pkg-config --cflags --libs gstreamer-1.0)
+        ls -lh libccvnn_ds_probe.so
+
+    - name: Run Synthetic Ingestion Test
+      run: |
+        python3 triton_stream_sim.py

@@ -1,34 +1,88 @@
-import argparse
+import asyncio
 import time
 import numpy as np
-import tritonclient.grpc as grpcclient
+import tritonclient.grpc.aio as grpcclient
 
-def run_inference(url="localhost:8001", batch_size=1, iterations=1000):
-    client = grpcclient.InferenceServerClient(url=url)
-    
-    inputs = [grpcclient.InferInput('input_vector', [batch_size, 9], 'FP32')]
-    dummy_data = np.random.randn(batch_size, 9).astype(np.float32)
-    inputs[0].set_data_from_numpy(dummy_data)
-    
-    outputs = [grpcclient.InferRequestedOutput('output_coords')]
-    
-    print(f"[+] Benchmarking Triton gRPC IPC ({iterations} iterations)...")
-    latencies = []
-    for _ in range(iterations):
+TRITON_GRPC_URL = "127.0.0.1:8001"
+
+# Target tensor specifications matching config.pbtxt
+MODEL_CONFIGS = {
+    "ccvnn_hardswish_12d": {
+        "input": "input_vector",
+        "output": "output_prediction",
+        "dim": 12,
+    },
+    "ccvnn_relu6_9d": {
+        "input": "input_vector",
+        "output": "output_coords",
+        "dim": 9,
+    },
+}
+
+
+async def send_grpc_inference(
+    client: grpcclient.InferenceServerClient, model_name: str, req_id: int
+):
+    cfg = MODEL_CONFIGS[model_name]
+
+    # 1. Prepare FP32 tensor [1, input_dim]
+    dummy_input = np.random.randn(1, cfg["dim"]).astype(np.float32)
+
+    # 2. Build Triton gRPC InferInput & InferRequestedOutput
+    inputs = [grpcclient.InferInput(cfg["input"], dummy_input.shape, "FP32")]
+    inputs[0].set_data_from_numpy(dummy_input)
+
+    outputs = [grpcclient.InferRequestedOutput(cfg["output"])]
+
+    # 3. Measure IPC round-trip latency + serialization overhead
+    t_start = time.perf_counter()
+    response = await client.infer(
+        model_name=model_name, inputs=inputs, outputs=outputs
+    )
+    latency_ms = (time.perf_counter() - t_start) * 1000
+
+    # 4. Extract output array
+    result_array = response.as_numpy(cfg["output"])
+    output_repr = (
+        np.array2string(result_array.flatten(), precision=4, suppress_small=True)
+        if result_array is not None
+        else "None"
+    )
+
+    print(
+        f"[gRPC #{req_id:02d}] {model_name:20s} | Latency: {latency_ms:6.2f}ms | Output: {output_repr}"
+    )
+    return result_array
+
+
+async def main():
+    print("--- Starting Async gRPC Inference Pipeline (Triton) ---")
+
+    async with grpcclient.InferenceServerClient(url=TRITON_GRPC_URL) as client:
+        if not await client.is_server_ready():
+            print("ERROR: Triton gRPC server is not ready at", TRITON_GRPC_URL)
+            return
+
+        print("Triton gRPC server status: READY\n")
+
+        # Dispatch 10 concurrent requests across both models
+        tasks = []
+        for i in range(10):
+            target_model = (
+                "ccvnn_relu6_9d" if i % 2 == 0 else "ccvnn_hardswish_12d"
+            )
+            tasks.append(send_grpc_inference(client, target_model, i + 1))
+
         t0 = time.perf_counter()
-        _ = client.infer(model_name='ccvnn', inputs=inputs, outputs=outputs)
-        latencies.append((time.perf_counter() - t0) * 1000)
-        
-    avg_latency = np.mean(latencies)
-    fps = (batch_size * 1000) / avg_latency
-    print(f"    - Average Latency: {avg_latency:.3f} ms")
-    print(f"    - Throughput:      {fps:.1f} FPS")
+        results = await asyncio.gather(*tasks)
+        total_time_ms = (time.perf_counter() - t0) * 1000
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--url', default='localhost:8001')
-    args = parser.parse_args()
-    try:
-        run_inference(args.url)
-    except Exception as e:
-        print(f"[!] Triton Connection Check: {e}")
+        successful = sum(1 for r in results if r is not None)
+        print("------------------------------------------------------------------")
+        print(
+            f"Executed {len(tasks)} gRPC requests ({successful} succeeded) in {total_time_ms:.2f}ms"
+        )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

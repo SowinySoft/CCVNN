@@ -1,0 +1,21 @@
+property {
+  infer_config {
+    unique_id: 1
+    gpu_ids: [0]
+    max_batch_size: 64
+    backend {
+      triton {
+        model_name: "ccvnn_hardswish_12d"
+        version: -1
+        grpc {
+          url: "localhost:8001"
+        }
+      }
+    }
+  }
+  input_control {
+    process_mode: PROCESS_MODE_FULL_FRAME
+    operate_on_class_ids: [-1]
+    interval: 0
+  }
+}

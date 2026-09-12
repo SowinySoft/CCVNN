@@ -1,0 +1,23 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install essential runtime libraries for ONNX Triton backend
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    libxml2 \
+    libnuma1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download Triton Server base binaries (ONNX-focused)
+# Uses official Triton release assets (~350MB compressed)
+WORKDIR /opt/tritonserver
+RUN curl -L https://github.com/triton-inference-server/server/releases/download/v2.42.0/tritonserver2.42.0-onnxruntime2.17.0.tar.gz | tar -xz
+
+ENV PATH="/opt/tritonserver/bin:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/tritonserver/lib:${LD_LIBRARY_PATH}"
+
+EXPOSE 8000 8001 8002
+
+ENTRYPOINT ["tritonserver"]

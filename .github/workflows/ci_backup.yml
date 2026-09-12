@@ -1,0 +1,111 @@
+name: CCVNN CI/CD Pipeline
+true:
+  push:
+    branches:
+    - main
+    tags:
+    - v*
+  pull_request:
+    branches:
+    - main
+jobs:
+  validate-and-benchmark:
+    name: Build, Validate & Benchmark CCVNN
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Install System Dependencies (OpenCV & LibTorch dependencies)
+      run: 'sudo apt-get update
+
+        sudo apt-get install -y libopencv-dev libgl1
+
+        '
+    - name: Install Python Dependencies
+      run: 'python -m pip install --upgrade pip
+
+        pip install torch numpy matplotlib opencv-python "tritonclient[grpc]"
+
+        '
+    - name: Validate Model Engine & Triton Config Files
+      run: "test -f model_repository/ccvnn_inspector/config.pbtxt || (echo \"Missing\
+        \ config.pbtxt\" && exit 1)\ntest -f model_repository/ccvnn_inspector/1/model.pt\
+        \ || (echo \"Missing model.pt\" && exit 1)\necho \"[\u2713] Model binary and\
+        \ Triton configuration exist.\"\n"
+    - name: Syntax Check Python Scripts
+      run: "python -m py_compile scripts/triton_client_stream.py\npython -m py_compile\
+        \ scripts/plot_benchmark.py\necho \"[\u2713] Python scripts syntax verified.\"\
+        \n"
+    - name: Setup LibTorch C++ SDK
+      run: "wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.2.0%2Bcpu.zip\n\
+        unzip -q libtorch-cxx11-abi-shared-with-deps-2.2.0+cpu.zip\necho \"[\u2713\
+        ] LibTorch extracted.\"\n"
+    - name: Compile C++ Glass-to-Glass Profiler & Drivers
+      run: "g++ -O3 scripts/cpp_inspection_engine.cpp \\\n    -I libtorch/include\
+        \ \\\n    -I libtorch/include/torch/csrc/api/include \\\n    -L libtorch/lib\
+        \ \\\n    -ltorch -ltorch_cpu -lc10 \\\n    -std=c++17 -o ccvnn_cpp_inspector\n\
+        \ng++ -O3 scripts/cpp_glass_to_glass_profiler.cpp \\\n    -I libtorch/include\
+        \ \\\n    -I libtorch/include/torch/csrc/api/include \\\n    -I /usr/include/opencv4\
+        \ \\\n    -L libtorch/lib \\\n    -ltorch -ltorch_cpu -lc10 \\\n    -lopencv_core\
+        \ -lopencv_videoio -lopencv_imgproc \\\n    -std=c++17 -o ccvnn_glass_profiler\n\
+        \necho \"[\u2713] C++ drivers and profiler compiled successfully.\"\n"
+    - name: Generate Synthetic Camera Stream for Headless CI
+      run: "python3 -c \"\nimport cv2, numpy as np\nout = cv2.VideoWriter('test_feed.mp4',\
+        \ cv2.VideoWriter_fourcc(*'mp4v'), 30, (640, 480))\nfor i in range(100):\n\
+        \    img = np.zeros((480, 640, 3), dtype=np.uint8)\n    cv2.rectangle(img,\
+        \ (100 + i, 100), (250 + i, 250), (255, 255, 255), -1)\n    out.write(img)\n\
+        out.release()\nprint('[\u2713] Synthetic test feed test_feed.mp4 generated.')\n\
+        \"\n"
+    - name: Execute Automated Glass-to-Glass Latency Benchmark
+      run: "export LD_LIBRARY_PATH=$PWD/libtorch/lib:$LD_LIBRARY_PATH\n./ccvnn_glass_profiler\
+        \ model_repository/ccvnn_inspector/1/model.pt 100 test_feed.mp4\ntest -f benchmark_results.json\
+        \ || (echo \"Missing benchmark_results.json\" && exit 1)\necho \"[\u2713]\
+        \ Automated benchmark execution complete.\"\n"
+    - name: Generate Latency Plot Visualizations
+      run: "python3 scripts/plot_benchmark.py\ntest -f docs/glass_to_glass_latency.png\
+        \ || (echo \"Missing latency plot\" && exit 1)\necho \"[\u2713] Benchmark\
+        \ plot generated at docs/glass_to_glass_latency.png.\"\n"
+    - name: Upload Benchmark Results & Plots as CI Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: glass-to-glass-latency-report
+        path: 'benchmark_results.json
+
+          docs/glass_to_glass_latency.png
+
+          '
+    - name: Publish Benchmark Summary to Workflow Tab
+      run: "python3 -c \"\nimport json, os\nwith open('benchmark_results.json') as\
+        \ f:\n    data = json.load(f)['summary_ms']\n\nsummary_file = os.environ['GITHUB_STEP_SUMMARY']\n\
+        with open(summary_file, 'a') as f:\n    f.write('### \U0001F680 CCVNN Glass-to-Glass\
+        \ Latency Summary\\n\\n')\n    f.write('| Pipeline Stage | p50 (ms) | p99\
+        \ (ms) |\\n')\n    f.write('|---|---|---|\\n')\n    for k, v in data.items():\n\
+        \        p50 = v.get('p50', 0.0)\n        p99 = v.get('p99', 0.0)\n      \
+        \  f.write(f'| **{k}** | {p50:.3f} | {p99:.3f} |\\n')\n\"\n"
+    - name: Generate Plotly Dashboard HTML
+      run: 'pip install plotly
+
+        python3 scripts/generate_dashboard.py
+
+        '
+    - name: Upload Pages Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: public/
+  deploy-dashboard:
+    needs: validate-and-benchmark
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4

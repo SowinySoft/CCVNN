@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  triton-inference-server:
+    container_name: ccvnn_triton_server
+    image: nvcr.io/nvidia/tritonserver:24.01-py3
+    command: >
+      tritonserver
+      --model-repository=/models
+      --log-verbose=1
+      --strict-model-config=false
+      --exit-on-error=false
+    ports:
+      - "8000:8000"   # HTTP Inference API
+      - "8001:8001"   # gRPC Inference API
+      - "8002:8002"   # Prometheus Metrics
+    volumes:
+      - ./model_repository:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
