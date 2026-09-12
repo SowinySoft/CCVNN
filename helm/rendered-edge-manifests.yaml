@@ -1,0 +1,187 @@
+---
+# Source: ccvnn-microservice/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ccvnn-microservice-config
+  labels:
+    helm.sh/chart: ccvnn-microservice-1.2.0
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  config-gpu.pbtxt: |
+    name: "ccvnn_hardswish_12d"
+    platform: "onnxruntime_onnx"
+    max_batch_size: 16
+    dynamic_batching {
+      preferred_batch_size: [ 4, 8, 16 ]
+      max_queue_delay_microseconds: 2000
+    }
+    instance_group [
+      {
+        count: 2
+        kind: KIND_GPU
+        gpus: [ 0 ]
+      }
+    ]
+---
+# Source: ccvnn-microservice/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ccvnn-microservice
+  labels:
+    helm.sh/chart: ccvnn-microservice-1.2.0
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 8001
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    - port: 8002
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+---
+# Source: ccvnn-microservice/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ccvnn-microservice
+  labels:
+    helm.sh/chart: ccvnn-microservice-1.2.0
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ccvnn-microservice
+      app.kubernetes.io/instance: ccvnn-edge-release
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ccvnn-microservice
+        app.kubernetes.io/instance: ccvnn-edge-release
+    spec:
+      containers:
+        - name: triton-server
+          image: "nvcr.io/nvidia/tritonserver:24.01-py3"
+          imagePullPolicy: IfNotPresent
+          command: ["tritonserver"]
+          args:
+            - "--model-repository=/models"
+            - "--log-verbose=0"
+            - "--exit-on-error=true"
+            - "--grpc-use-ssl=1"
+            - "--grpc-server-cert=/certs/server.crt"
+            - "--grpc-server-key=/certs/server.key"
+            - "--grpc-root-cert=/certs/ca.crt"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+            - name: grpc
+              containerPort: 8001
+              protocol: TCP
+            - name: metrics
+              containerPort: 8002
+              protocol: TCP
+          volumeMounts:
+            - name: certs-volume
+              mountPath: /certs
+              readOnly: true
+          resources:
+            limits:
+              cpu: 4000m
+              memory: 8Gi
+              nvidia.com/gpu: "1"
+            requests:
+              cpu: 2000m
+              memory: 4Gi
+              nvidia.com/gpu: "1"
+      volumes:
+        - name: certs-volume
+          secret:
+            secretName: ccvnn-microservice-tls
+---
+# Source: ccvnn-microservice/templates/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: ccvnn-microservice-autoscaler
+  labels:
+    helm.sh/chart: ccvnn-microservice-1.2.0
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ccvnn-microservice
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  cooldownPeriod: 300
+  pollingInterval: 15
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 10
+              periodSeconds: 60
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-k8s.monitoring.svc.cluster.local:9090
+        metricName: triton_queue_latency_us
+        query: |
+          sum(rate(nv_inference_queue_duration_us[1m])) / sum(rate(nv_inference_request_success_total[1m]))
+        threshold: '5000'
+---
+# Source: ccvnn-microservice/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ccvnn-microservice-monitor
+  labels:
+    helm.sh/chart: ccvnn-microservice-1.2.0
+    app.kubernetes.io/name: ccvnn-microservice
+    app.kubernetes.io/instance: ccvnn-edge-release
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ccvnn-microservice
+      app.kubernetes.io/instance: ccvnn-edge-release
+  endpoints:
+    - port: metrics
+      interval: 5s
+      path: /metrics
