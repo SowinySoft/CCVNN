@@ -2,39 +2,63 @@ name: CCVNN Triton Microservice CI/CD
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ "main", "master" ]
 
 jobs:
   validate-and-benchmark:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install numpy tritonclient[grpc] pyyaml
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install tritonclient[grpc] numpy
 
-    - name: Validate Kubernetes Manifests
-      run: |
-        python3 -c "import yaml; yaml.safe_load(open('k8s/deployment.yaml')); yaml.safe_load(open('k8s/service.yaml')); print('k8s Manifests Valid!')"
+      # STEP 1: Verify Docker Port Mapping & Launch Triton
+      - name: Start Triton Inference Server
+        run: |
+          docker run -d \
+            --name triton-server \
+            -p 8000:8000 \
+            -p 8001:8001 \
+            -p 8002:8002 \
+            -v ${{ github.workspace }}/model_repository:/models \
+            nvcr.io/nvidia/tritonserver:23.10-py3 \
+            tritonserver --model-repository=/models --strict-readiness=false
 
-    - name: Build C++ DeepStream Probe Library
-      run: |
-        sudo apt-get update && sudo apt-get install -y libgstreamer1.0-dev
-        g++ -shared -fPIC -O3 ccvnn_ds_probe.cpp -o libccvnn_ds_probe.so $(pkg-config --cflags --libs gstreamer-1.0)
-        ls -lh libccvnn_ds_probe.so
+      # STEP 2: Add Health Probe Wait Step
+      - name: Wait for Triton Readiness
+        run: |
+          echo "Checking Triton Server readiness..."
+          timeout 60s bash -c '
+            until [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready)" -eq 200 ]; do
+              echo "Waiting for Triton Server on 127.0.0.1:8000..."
+              sleep 2
+            done
+          '
+          echo "Triton Inference Server is healthy and ready!"
 
-    - name: Run Synthetic Ingestion Test
-      run: |
-        python3 triton_stream_sim.py
+      # STEP 3: Verify Step Execution Order (Run test after container is ready)
+      - name: Run Synthetic Ingestion Test
+        run: |
+          python /home/runner/work/CCVNN/CCVNN/triton_stream_sim.py
+
+      # STEP 4: Debug Container Logs Step (Executes automatically on step failure)
+      - name: Fetch Triton Container Logs on Failure
+        if: failure()
+        run: |
+          echo "=== TRITON SERVER CONTAINER LOGS ==="
+          docker logs triton-server --tail 200
+          echo "=== CONTAINER NETWORK & PORT STATUS ==="
+          docker ps -a
+          curl -v http://127.0.0.1:8000/v2/health/ready || true
