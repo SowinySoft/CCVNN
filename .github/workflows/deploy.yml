@@ -24,7 +24,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install tritonclient[grpc] numpy
 
-      # STEP 1: Verify Docker Port Mapping & Launch Triton
+      # STEP 1: Launch Triton with detailed logging
       - name: Start Triton Inference Server
         run: |
           docker run -d \
@@ -34,20 +34,26 @@ jobs:
             -p 8002:8002 \
             -v ${{ github.workspace }}/model_repository:/models \
             nvcr.io/nvidia/tritonserver:23.10-py3 \
-            tritonserver --model-repository=/models --strict-readiness=false
+            tritonserver --model-repository=/models --log-verbose=1 --strict-model-config=false
 
-      # STEP 2: Add Health Probe Wait Step
-      - name: Wait for Triton Readiness
+      # STEP 2: Wait & Dump Logs immediately if unready
+      - name: Wait for Triton Readiness or Dump Logs
         run: |
           echo "Checking Triton Server readiness..."
-          timeout 60s bash -c '
-            until [ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready)" -eq 200 ]; do
-              echo "Waiting for Triton Server on 127.0.0.1:8000..."
-              sleep 2
-            done
-          '
-          echo "Triton Inference Server is healthy and ready!"
+          for i in {1..30}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
+            if [ "$STATUS" -eq 200 ]; then
+              echo "Triton Server is READY!"
+              exit 0
+            fi
+            echo "Waiting for Triton ($i/30)... status: $STATUS"
+            sleep 2
+          done
 
+          echo "ERROR: Triton failed to become ready in 60s. Printing container logs:"
+          docker logs triton-server
+          exit 1
+          
       # STEP 3: Verify Step Execution Order (Run test after container is ready)
       - name: Run Synthetic Ingestion Test
         run: |
