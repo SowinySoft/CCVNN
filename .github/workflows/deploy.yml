@@ -24,23 +24,33 @@ jobs:
           python -m pip install --upgrade pip
           pip install "tritonclient[grpc]" numpy
 
-      # STEP 1: Start Triton via Docker Compose & Wait for Ports
-      - name: Start Triton Service & Wait for Health
+      - name: Start Triton via Docker Compose
         run: |
           docker compose up -d triton || docker compose up -d
-          echo "Waiting for Triton gRPC (8001) and HTTP (8000)..."
-          timeout 60s bash -c 'until nc -z localhost 8001 && curl -s http://127.0.0.1:8000/v2/health/ready | grep -q ""; do sleep 2; done' || true
 
-      # STEP 2: Run Synthetic Ingestion Test
+      - name: Wait for Triton gRPC & HTTP Readiness
+        run: |
+          echo "Waiting for Triton Server to become ready..."
+          for i in {1..30}; do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
+            if [ "$HTTP_STATUS" -eq 200 ] && nc -z 127.0.0.1 8001; then
+              echo "Triton Server is READY on ports 8000 and 8001!"
+              exit 0
+            fi
+            echo "Waiting for Triton ($i/30)... status: $HTTP_STATUS"
+            sleep 3
+          done
+
+          echo "ERROR: Triton server failed to ready up. Dumping logs:"
+          docker compose logs --tail=100
+          exit 1
+
       - name: Run Synthetic Ingestion Test
         run: |
           python3 triton_stream_sim.py
 
-      # STEP 3: Debug Container Logs on Failure
-      - name: Fetch Triton Container Logs on Failure
+      - name: Debug Logs on Failure
         if: failure()
         run: |
-          echo "=== DOCKER CONTAINERS STATUS ==="
           docker compose ps
-          echo "=== TRITON SERVER CONTAINER LOGS ==="
-          docker compose logs --tail 200 triton || docker logs triton-server --tail 200 || true
+          docker compose logs --tail=200
