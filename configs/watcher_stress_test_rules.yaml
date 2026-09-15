@@ -1,0 +1,14 @@
+# Global Fallback for dynamically discovered RTSP / gRPC camera streams
+default_rule:
+  persistence_threshold: 2
+  heartbeat_interval: 10
+  plc_register_base: 40001
+  mqtt_topic_template: "factory/{cam_id}/hazard"
+
+# Explicit overrides for static camera hardware
+rules:
+  cam_01:
+    persistence_threshold: 2
+    heartbeat_interval: 10
+    plc_register: 40001
+    mqtt_topic: "factory/cam_01/hazard"

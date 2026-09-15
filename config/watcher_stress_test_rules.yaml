@@ -1,0 +1,22 @@
+default_debouncing:
+  min_confidence: 0.50
+  consecutive_frames: 2
+
+event_classes:
+  NO_HELMET:
+    display_name: "No Helmet Detected"
+    severity: "CRITICAL"
+    action_type: "PLC_RELAY_TRIP"
+    plc_config:
+      ip: "modbus-plc-sim"
+      port: 5020
+      register: 40001
+    topics:
+      - "factory/cam_01/hazard"
+
+  UNAUTHORIZED_ZONE:
+    display_name: "Unauthorized Zone Access"
+    severity: "WARNING"
+    action_type: "MQTT_ALERT"
+    topics:
+      - "factory/cam_01/alerts"

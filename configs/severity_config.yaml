@@ -1,0 +1,48 @@
+version: "1.0"
+
+default_debouncing:
+  min_confidence: 0.50
+  consecutive_frames: 5
+
+event_classes:
+  fire_smoke:
+    class_id: 1
+    display_name: "Fire / Smoke Hazard"
+    min_confidence: 0.70
+    consecutive_frames: 3
+    severity: "CRITICAL"
+    action_type: "IMMEDIATE_ALERT"
+    topics:
+      - "factory/alerts/critical/fire"
+
+  production_crash:
+    class_id: 2
+    display_name: "Production Line Crash"
+    min_confidence: 0.85
+    consecutive_frames: 2
+    severity: "HIGH"
+    action_type: "PLC_RELAY_TRIP"
+    plc_config:
+      ip: "192.168.10.45"
+      register: 40001
+      value: 1
+
+  electrical_arc:
+    class_id: 3
+    display_name: "Electrical Arc / Shock Hazard"
+    min_confidence: 0.90
+    consecutive_frames: 1
+    severity: "CRITICAL"
+    action_type: "PLC_RELAY_TRIP"
+    plc_config:
+      ip: "192.168.10.46"
+      register: 40002
+      value: 1
+
+  ppe_violation:
+    class_id: 4
+    display_name: "PPE Non-Compliance"
+    min_confidence: 0.60
+    consecutive_frames: 10
+    severity: "WARNING"
+    action_type: "LOG_AND_NOTIFY"

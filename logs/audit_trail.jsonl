@@ -1,0 +1,1 @@
+{"timestamp": "2026-09-14T08:26:41Z", "signature_sha256": "513a79deeb2c99b43eef8e9a75e9962679b2616e9a946655876189a703a02758", "payload": {"sensor_id": "cam_01", "zone_id": "zone_01", "class_name": "fire_smoke", "confidence": 0.85, "severity": "CRITICAL", "action_type": "IMMEDIATE_ALERT"}}

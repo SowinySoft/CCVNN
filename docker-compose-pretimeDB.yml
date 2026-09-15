@@ -1,21 +1,21 @@
 services:
-  ccvnn-mqtt-broker:
+  mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: ccvnn-mqtt-broker
     restart: always
     ports:
       - "1883:1883"
     command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    networks:
+      - ccvnn-net
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t 'healthcheck' -m 'ping' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
       start_period: 5s
-    networks:
-      - ccvnn-net
 
-  ccvnn-plc-sim:
+  modbus-plc-sim:
     build:
       context: .
       dockerfile: docker/Dockerfile.plc
@@ -28,28 +28,6 @@ services:
     networks:
       - ccvnn-net
 
-  ccvnn-db:
-    image: timescale/timescaledb:latest-pg15
-    container_name: ccvnn-db
-    restart: always
-    environment:
-      POSTGRES_DB: ccvnn_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ccvnn_db || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    volumes:
-      - ccvnn_pgdata:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - ccvnn-net
-
   watcher-engine:
     build:
       context: .
@@ -57,24 +35,16 @@ services:
     container_name: ccvnn-watcher-engine
     restart: always
     depends_on:
-      ccvnn-mqtt-broker:
+      mqtt-broker:
         condition: service_healthy
-      ccvnn-db:
-        condition: service_healthy
-      ccvnn-plc-sim:
+      modbus-plc-sim:
         condition: service_started
     environment:
       - PYTHONUNBUFFERED=1
-      - MQTT_BROKER=ccvnn-mqtt-broker
       - MQTT_HOST=ccvnn-mqtt-broker
       - MQTT_PORT=1883
-      - PLC_HOST=ccvnn-plc-sim
+      - PLC_HOST=modbus-plc-sim
       - PLC_PORT=5020
-      - DB_HOST=ccvnn-db
-      - DB_PORT=5432
-      - DB_NAME=ccvnn_db
-      - DB_USER=postgres
-      - DB_PASS=postgrespassword
       - CONFIG_PATH=config/watcher_stress_test_rules.yaml
     command: python watcher/daemon.py
     volumes:
@@ -85,6 +55,4 @@ services:
 networks:
   ccvnn-net:
     driver: bridge
-
-volumes:
-  ccvnn_pgdata:
+ 

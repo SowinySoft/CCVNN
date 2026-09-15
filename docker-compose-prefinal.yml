@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:26.08-py3
+    container_name: ccvnn-triton
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    volumes:
+      - ./model_repository:/models
+    command: ["tritonserver", "--model-repository=/models", "--strict-readiness=false"]
+
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./configs/mosquitto.conf:/mosquitto/config/mosquitto.conf

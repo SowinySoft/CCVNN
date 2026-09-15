@@ -1,0 +1,92 @@
+import os
+import time
+import sqlite3
+import logging
+from watcher.src.publisher import MQTTPublisher
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("MQTTResilienceTest")
+
+DB_PATH = "watcher_offline_queue.db"
+
+
+def test_broker_disconnect_and_reconnect_flushing():
+    print("\n--- Testing MQTT Broker Outage & SQLite Store-and-Forward ---")
+
+    # Clean up old test database if present
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+
+    # 1. Initialize publisher with an unreachable port to simulate a crashed broker
+    logger.info("Step 1: Initializing publisher with offline broker endpoint (localhost:19999)...")
+    publisher = MQTTPublisher(host="127.0.0.1", port=19999, db_path=DB_PATH)
+
+    # 2. Attempt publishing critical safety events while broker is offline
+    test_events = [
+        {
+            "sensor_id": "cam_01",
+            "zone_id": "zone_alpha",
+            "tracking_id": "tr_101",
+            "event_type": "FIRE_DETECTION",
+            "confidence": 0.94,
+            "severity": "CRITICAL"
+        },
+        {
+            "sensor_id": "cam_02",
+            "zone_id": "zone_beta",
+            "tracking_id": "tr_102",
+            "event_type": "FORKLIFT_INTRUSION",
+            "confidence": 0.88,
+            "severity": "CRITICAL"
+        },
+        {
+            "sensor_id": "cam_01",
+            "zone_id": "zone_alpha",
+            "tracking_id": "tr_103",
+            "event_type": "PPE_MISSING",
+            "confidence": 0.79,
+            "severity": "WARNING"
+        }
+    ]
+
+    logger.info("Step 2: Publishing events during broker outage...")
+    for event in test_events:
+        publisher.publish_event_dict(event)
+
+    # 3. Verify payloads were written to SQLite offline database
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*), payload FROM offline_messages")
+    buffered_count, sample_payload = cursor.fetchone()
+    conn.close()
+
+    assert buffered_count == len(test_events), (
+        f"Expected {len(test_events)} buffered events, but found {buffered_count}"
+    )
+    print(f"✓ Offline Buffer Verified: {buffered_count} events held in SQLite queue.")
+    print(f"   Sample buffered payload: {sample_payload[:80]}...")
+
+    # 4. Restore broker target connection and flush queue
+    logger.info("Step 3: Restoring broker connection (localhost:1883) & triggering flush...")
+    publisher.reconnect_and_flush(host="127.0.0.1", port=1883)
+
+    # 5. Verify SQLite queue was completely drained
+    time.sleep(0.5)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM offline_messages")
+    remaining_count = cursor.fetchone()[0]
+    conn.close()
+
+    assert remaining_count == 0, (
+        f"Expected 0 remaining queued messages, but found {remaining_count}"
+    )
+    print("✓ Re-flush Successful: SQLite store-and-forward queue completely drained.")
+
+    # Cleanup temporary database
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+
+
+if __name__ == "__main__":
+    test_broker_disconnect_and_reconnect_flushing()
