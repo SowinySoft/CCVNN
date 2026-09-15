@@ -24,12 +24,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
+          pip install pytest "tritonclient[grpc]"
 
-      - name: Start Docker services
+      - name: Start Docker services & Wait for Health
         run: |
           docker compose up -d --build
-          sleep 10
+          # Wait for Triton GRPC port 8001 to accept connections
+          timeout 60s bash -c 'until nc -z localhost 8001; do sleep 2; done' || true
 
       - name: Run E2E Containerized Test
         run: |
@@ -37,7 +38,7 @@ jobs:
 
       - name: Run Watcher Unit & Integration Tests
         run: |
-          pytest watcher/tests/
+          PYTHONPATH=. pytest watcher/tests/
 
       - name: Dump Container Logs on Failure
         if: failure()
