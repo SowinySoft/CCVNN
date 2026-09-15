@@ -7,3 +7,7 @@ sample_data/
 certs/*.key
 certs/*.srl
 certs/*.csr
+
+__pycache__/
+*.db
+logs/*.jsonl
