@@ -1,5 +1,12 @@
 name: CCVNN Triton Microservice CI/CD
 
+- name: Log in to GHCR
+  uses: docker/login-action@v3
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+
 on:
   push:
     branches: [ "main", "master" ]
