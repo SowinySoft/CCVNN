@@ -17,7 +17,7 @@ services:
 
   # 2. Modbus TCP Simulator (PLC)
   modbus-plc:
-    image: ghcr.io/SowinySoft/ccvnn-modbus-plc:latest
+    image: ghcr.io/sowinysoft/ccvnn/ccvnn-modbus-plc:latest
     # Local build section removed to force pulling pre-built image from GHCR
     container_name: ccvnn-plc-sim
     command: python3 -m watcher.simulators.modbus_server --port 5020
@@ -45,7 +45,7 @@ services:
 
   # 4. CCVNN Safety Watcher Edge Service
   watcher-service:
-    image: ghcr.io/SowinySoft/ccvnn-watcher:latest
+    image: ghcr.io/sowinysoft/ccvnn/ccvnn-watcher:latest
     # Local build section removed to pull pre-built image from GHCR
     container_name: ccvnn-watcher
     depends_on:

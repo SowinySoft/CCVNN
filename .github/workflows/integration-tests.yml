@@ -1,12 +1,5 @@
 name: CCVNN - E2E Integration Tests
 
-- name: Log in to GHCR
-  uses: docker/login-action@v3
-  with:
-    registry: ghcr.io
-    username: ${{ github.actor }}
-    password: ${{ secrets.GITHUB_TOKEN }}
-
 on:
   pull_request:
     branches: [ main ]
