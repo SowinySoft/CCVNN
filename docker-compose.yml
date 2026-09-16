@@ -22,11 +22,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ccvnn-plc-sim
-    command: python3 -m watcher.simulators.modbus_server --port 5020
+    # Force host to 0.0.0.0 inside the container
+    command: python3 -m watcher.simulators.modbus_server --host 0.0.0.0 --port 5020
     ports:
       - "5020:5020"
     restart: always
-
+    
   # 3. Triton Inference Server (CPU/GPU model server)
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3

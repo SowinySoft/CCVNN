@@ -6,9 +6,9 @@ from pymodbus.client import ModbusTcpClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ContainerizedE2ETest")
 
-MQTT_HOST = "localhost"
+MQTT_HOST = "127.0.0.1"
 MQTT_PORT = 1883
-PLC_HOST = "localhost"
+PLC_HOST = "127.0.0.1"
 PLC_PORT = 5020
 
 
