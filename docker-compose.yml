@@ -24,8 +24,8 @@ services:
     container_name: ccvnn-plc-sim
     environment:
       - PYTHONPATH=/app
-    # Execute script directly or via python module from /app working dir
-    command: python3 watcher/simulators/modbus_server.py --host 0.0.0.0 --port 5020
+    # Use python module mode to resolve imports reliably
+    command: python3 -m watcher.simulators.modbus_server --host 0.0.0.0 --port 5020
     ports:
       - "5020:5020"
     restart: always
@@ -43,11 +43,11 @@ services:
       modbus-plc:
         condition: service_started
     environment:
-      - MQTT_BROKER=ccvnn-mqtt
+      - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
-      - PLC_IP=ccvnn-plc-sim
+      - PLC_IP=modbus-plc
       - PLC_PORT=5020
-      - TRITON_HOST=ccvnn-triton
+      - TRITON_HOST=triton-server
       - TRITON_PORT=8001
       - DB_PATH=/app/data/watcher_buffer.db
       - PYTHONPATH=/app
