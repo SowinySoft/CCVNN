@@ -2,15 +2,23 @@ import argparse
 import asyncio
 import logging
 from pymodbus.server import StartAsyncTcpServer
-from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
+from pymodbus.datastore import (
+    ModbusSequentialDataBlock,
+    ModbusSlaveContext,
+    ModbusServerContext,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ModbusSim")
 
 async def run_server(host: str, port: int):
-    # Initialize holding registers (40001+) initialized to zero
+    # Expand datablock range (0-1000) for all register types to prevent offset out-of-bounds crashes
+    block = ModbusSequentialDataBlock(0, [0] * 1000)
     store = ModbusSlaveContext(
-        hr=ModbusSequentialDataBlock(0, [0] * 100),
+        di=block,
+        co=block,
+        hr=block,
+        ir=block,
         zero_mode=True
     )
     context = ModbusServerContext(slaves=store, single=True)
