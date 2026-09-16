@@ -18,7 +18,16 @@ def verify_e2e_stack():
     # 1. Connect to Containerized Modbus PLC
     logger.info(f"Connecting to PLC Simulator at {PLC_HOST}:{PLC_PORT}...")
     plc_client = ModbusTcpClient(PLC_HOST, port=PLC_PORT)
-    assert plc_client.connect(), "Failed to connect to containerized Modbus PLC simulator!"
+    # Attempt connection with retries
+    connected = False
+    for _ in range(10):
+        if plc_client.connect():
+            connected = True
+            break
+        time.sleep(1)
+
+    assert connected, "Failed to connect to containerized Modbus PLC simulator!"
+    #assert plc_client.connect(), "Failed to connect to containerized Modbus PLC simulator!"
     logger.info("✓ Connected to Modbus PLC.")
 
     # 2. Setup MQTT Listener

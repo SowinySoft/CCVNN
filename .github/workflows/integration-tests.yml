@@ -14,15 +14,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # --- ADD THIS STEP HERE ---
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # ---------------------------
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -44,9 +35,8 @@ jobs:
       - name: Start Docker services & Wait for Health
         run: |
           docker compose up -d --build
-          # Wait for Triton GRPC port 8001 to accept connections
-          timeout 60s bash -c 'until nc -z localhost 8001; do sleep 2; done' || true
-
+          echo "Waiting for Triton (8001) and Modbus PLC (5020)..."
+          timeout 60s bash -c 'until nc -z localhost 8001 && nc -z localhost 5020; do sleep 2; done' || true
       - name: Run E2E Containerized Test
         run: |
           python scripts/test_e2e_containerized.py

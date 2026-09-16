@@ -10,7 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Add pip user bin directory to system PATH
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Run package installations
+RUN pip install --no-cache-dir -r requirements.txt
 # Replace standard RUN pip install with a cached mount:
 #RUN --mount=type=cache,target=/root/.cache/pip \
 #    pip install --user -r requirements.txt
