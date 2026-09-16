@@ -15,18 +15,46 @@ services:
       timeout: 3s
       retries: 5
 
-  # 2. Modbus TCP Simulator (PLC)
+# 2. Modbus TCP Simulator (PLC)
   modbus-plc:
     image: ghcr.io/sowinysoft/ccvnn/ccvnn-modbus-plc:latest
     build:
       context: .
       dockerfile: Dockerfile
     container_name: ccvnn-plc-sim
-    # Force host to 0.0.0.0 inside the container
-    command: python3 -m watcher.simulators.modbus_server --host 0.0.0.0 --port 5020
+    environment:
+      - PYTHONPATH=/app
+    # Execute script directly or via python module from /app working dir
+    command: python3 watcher/simulators/modbus_server.py --host 0.0.0.0 --port 5020
     ports:
       - "5020:5020"
     restart: always
+
+  # 4. CCVNN Safety Watcher Edge Service
+  watcher-service:
+    image: ghcr.io/sowinysoft/ccvnn/ccvnn-watcher:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ccvnn-watcher
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      modbus-plc:
+        condition: service_started
+    environment:
+      - MQTT_BROKER=ccvnn-mqtt
+      - MQTT_PORT=1883
+      - PLC_IP=ccvnn-plc-sim
+      - PLC_PORT=5020
+      - TRITON_HOST=ccvnn-triton
+      - TRITON_PORT=8001
+      - DB_PATH=/app/data/watcher_buffer.db
+      - PYTHONPATH=/app
+    volumes:
+      - ccvnn-data:/app/data
+      - ./config:/app/config
+    restart: unless-stopped
     
   # 3. Triton Inference Server (CPU/GPU model server)
   triton-server:
@@ -45,31 +73,6 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-
-  # 4. CCVNN Safety Watcher Edge Service
-  watcher-service:
-    image: ghcr.io/sowinysoft/ccvnn/ccvnn-watcher:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ccvnn-watcher
-    depends_on:
-      mqtt-broker:
-        condition: service_healthy
-      modbus-plc:
-        condition: service_started
-    environment:
-      - MQTT_BROKER=mqtt-broker
-      - MQTT_PORT=1883
-      - PLC_IP=modbus-plc
-      - PLC_PORT=5020
-      - TRITON_HOST=triton-server
-      - TRITON_PORT=8001
-      - DB_PATH=/app/data/watcher_buffer.db
-    volumes:
-      - ccvnn-data:/app/data
-      - ./config:/app/config  # Mount rules configuration folder
-    restart: unless-stopped
 
 volumes:
   ccvnn-data:
