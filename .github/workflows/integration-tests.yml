@@ -32,11 +32,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # ---------------------------
-      - name: Start Docker services & Wait for Readiness
+      - name: Start Docker services
+        run: docker compose up -d --build
+
+      - name: Wait for service readiness
         run: |
-          docker compose up -d --build
-          echo "Waiting for Triton (8001) and Modbus PLC (5020)..."
-          timeout 60s bash -c 'until nc -z 127.0.0.1 8001 && nc -z 127.0.0.1 5020; do sleep 2; done' || true
+          timeout 120s bash -c '
+            until docker compose ps --status running --services | grep -qx "modbus-plc" &&
+                  nc -z 127.0.0.1 5020 &&
+                  nc -z 127.0.0.1 8001; do
+              docker compose ps
+              sleep 2
+            done
+          '
+
+      - name: Verify service health
+        run: |
+          docker compose ps
+          test "$(docker inspect -f '{{.State.Status}}' ccvnn-plc-sim)" = "running"
+          test "$(docker inspect -f '{{.State.Health.Status}}' ccvnn-plc-sim)" = "healthy"
+          
       - name: Run E2E Containerized Test
         run: |
           python scripts/test_e2e_containerized.py

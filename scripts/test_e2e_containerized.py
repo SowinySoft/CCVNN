@@ -50,23 +50,19 @@ def verify_e2e_stack():
     INFO = "Simulating direct register verification on PLC (Register 40001)..."
 
     # 1. Write value 1 to address 0 (Holding Register 40001 in 0-based indexing)
-    plc_client.write_register(0, 1)
+    try:
+        # MQTT setup and Modbus verification
+        plc_client.write_register(0, 1)
+        rr = plc_client.read_holding_registers(0, count=1)
 
-    # 2. Read address 0 with count=1 keyword argument
-    rr = plc_client.read_holding_registers(0, count=1)
-
-    # 3. Verify read back
-    assert not rr.isError() and rr.registers[0] == 1, "Failed to write/read PLC register 40001!"
-    logger.info("✓ PLC Register 40001 updated to active state (1).")
-
-    # Reset state
-    plc_client.write_register(40001, 0)
-    plc_client.close()
-    mqtt_client.loop_stop()
-    mqtt_client.disconnect()
-
-    logger.info("\n🎉 CONTAINERIZED END-TO-END PIPELINE VERIFICATION PASSED!")
-
+        assert not rr.isError()
+        assert rr.registers[0] == 1
+    finally:
+        if plc_client:
+            plc_client.write_register(0, 0)
+            plc_client.close()
+        mqtt_client.loop_stop()
+        mqtt_client.disconnect()
 
 if __name__ == "__main__":
     verify_e2e_stack()

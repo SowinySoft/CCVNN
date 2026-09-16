@@ -23,12 +23,24 @@ services:
       dockerfile: Dockerfile
     container_name: ccvnn-plc-sim
     environment:
-      - PYTHONPATH=/app
-    # Use python module mode to resolve imports reliably
-    command: python3 -m watcher.simulators.modbus_server --host 0.0.0.0 --port 5020
+      PYTHONPATH: /app
+    command:
+      - python3
+      - -m
+      - watcher.simulators.modbus_server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5020"
     ports:
       - "5020:5020"
-    restart: always
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 5020), 2); s.close()\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
   # 4. CCVNN Safety Watcher Edge Service
   watcher-service:
@@ -41,7 +53,9 @@ services:
       mqtt-broker:
         condition: service_healthy
       modbus-plc:
-        condition: service_started
+        condition: service_healthy
+      triton-server:
+        condition: service_healthy
     environment:
       - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
