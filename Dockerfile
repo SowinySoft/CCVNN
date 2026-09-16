@@ -10,14 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# Add pip user bin directory to system PATH
-ENV PATH="/root/.local/bin:${PATH}"
 
-# Run package installations
-RUN pip install --no-cache-dir -r requirements.txt
-# Replace standard RUN pip install with a cached mount:
-#RUN --mount=type=cache,target=/root/.cache/pip \
-#    pip install --user -r requirements.txt
+# Install dependencies into /root/.local via --user flag
+RUN pip install --user --no-cache-dir --no-warn-script-location -r requirements.txt
+
 
 # Stage 2: Runtime image
 FROM python:3.11-slim AS runner
@@ -28,13 +24,12 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
-    libglib2.0-0 \
     sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed Python packages from builder
 COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH="/root/.local/bin:${PATH}"
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
