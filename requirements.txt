@@ -56,7 +56,7 @@ pydantic
 pydantic_core 
 pydub 
 Pygments 
-pymodbus 
+pymodbus==3.7.4 
 pyserial 
 pytest 
 pytest-cov 

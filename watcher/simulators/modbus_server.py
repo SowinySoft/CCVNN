@@ -5,46 +5,31 @@ import logging
 from pymodbus.datastore import (
     ModbusSequentialDataBlock,
     ModbusServerContext,
+    ModbusSlaveContext,
 )
 from pymodbus.server import StartAsyncTcpServer
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ModbusSim")
 
 
 async def run_server(host: str, port: int) -> None:
     block = ModbusSequentialDataBlock(0, [0] * 1000)
 
-    try:
-        # PyModbus versions exposing ModbusDeviceContext.
-        from pymodbus.datastore import ModbusDeviceContext
-
-        device = ModbusDeviceContext(
-            di=block,
-            co=block,
-            hr=block,
-            ir=block,
-        )
-        context = ModbusServerContext(devices=device, single=True)
-    except ImportError:
-        # Older PyModbus versions.
-        from pymodbus.datastore import ModbusSlaveContext
-
-        store = ModbusSlaveContext(
-            di=block,
-            co=block,
-            hr=block,
-            ir=block,
-            zero_mode=True,
-        )
-        context = ModbusServerContext(slaves=store, single=True)
+    store = ModbusSlaveContext(
+        di=block,
+        co=block,
+        hr=block,
+        ir=block,
+        zero_mode=True,
+    )
+    context = ModbusServerContext(
+        slaves=store,
+        single=True,
+    )
 
     logger.info("Starting Modbus TCP Simulator on %s:%s", host, port)
     await StartAsyncTcpServer(
         context=context,
         address=(host, port),
     )
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
