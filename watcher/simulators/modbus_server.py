@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import logging
 from pymodbus.server import StartAsyncTcpServer
-from pymodbus.device import ModbusDeviceIdentification
 from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
 
 logging.basicConfig(level=logging.INFO)
@@ -16,13 +15,8 @@ async def run_server(host: str, port: int):
     )
     context = ModbusServerContext(slaves=store, single=True)
 
-    identity = ModbusDeviceIdentification()
-    identity.VendorName = "SowinySoft"
-    identity.ProductCode = "CCVNN-PLC-SIM"
-    identity.ModelName = "Modbus TCP Simulator"
-
     logger.info(f"Starting Modbus TCP Simulator on {host}:{port}...")
-    await StartAsyncTcpServer(context=context, identity=identity, address=(host, port))
+    await StartAsyncTcpServer(context=context, address=(host, port))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CCVNN Modbus TCP PLC Simulator")
