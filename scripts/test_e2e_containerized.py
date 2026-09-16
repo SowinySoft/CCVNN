@@ -18,7 +18,7 @@ def verify_e2e_stack():
     # 1. Connect to Containerized Modbus PLC
     logger.info(f"Connecting to PLC Simulator at {PLC_HOST}:{PLC_PORT}...")
     plc_client = ModbusTcpClient(PLC_HOST, port=PLC_PORT)
-    # Attempt connection with retries
+    
     connected = False
     for _ in range(10):
         if plc_client.connect():
@@ -27,7 +27,6 @@ def verify_e2e_stack():
         time.sleep(1)
 
     assert connected, "Failed to connect to containerized Modbus PLC simulator!"
-    #assert plc_client.connect(), "Failed to connect to containerized Modbus PLC simulator!"
     logger.info("✓ Connected to Modbus PLC.")
 
     # 2. Setup MQTT Listener
@@ -46,23 +45,22 @@ def verify_e2e_stack():
 
     logger.info("✓ Subscribed to MQTT topics.")
 
-    # Replace the direct register check block with:
-    INFO = "Simulating direct register verification on PLC (Register 40001)..."
-
-    # 1. Write value 1 to address 0 (Holding Register 40001 in 0-based indexing)
+    # 3. Direct register verification on PLC (Holding Register 40001 / Address 0)
     try:
-        # MQTT setup and Modbus verification
-        plc_client.write_register(0, 1)
-        rr = plc_client.read_holding_registers(0, count=1)
+        write_res = plc_client.write_register(0, 1)
+        assert not write_res.isError(), "Failed to write register 0"
 
-        assert not rr.isError()
-        assert rr.registers[0] == 1
+        rr = plc_client.read_holding_registers(0, count=1)
+        assert not rr.isError(), "Failed to read register 0"
+        assert rr.registers[0] == 1, f"Expected 1, got {rr.registers[0]}"
+        logger.info("✓ Modbus Register read/write verified.")
     finally:
         if plc_client:
             plc_client.write_register(0, 0)
             plc_client.close()
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
+
 
 if __name__ == "__main__":
     verify_e2e_stack()

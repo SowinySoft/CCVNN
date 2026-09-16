@@ -9,6 +9,10 @@ from pymodbus.datastore import (
 )
 from pymodbus.server import StartAsyncTcpServer
 
+# Initialize logger and base config
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 async def run_server(host: str, port: int) -> None:
     block = ModbusSequentialDataBlock(0, [0] * 1000)
@@ -30,6 +34,7 @@ async def run_server(host: str, port: int) -> None:
         context=context,
         address=(host, port),
     )
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
