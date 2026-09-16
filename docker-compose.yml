@@ -1,6 +1,5 @@
 services:
   # 1. Mosquitto MQTT Broker
-# 1. Mosquitto MQTT Broker
   mqtt-broker:
     image: eclipse-mosquitto:latest
     container_name: ccvnn-mqtt
@@ -11,12 +10,12 @@ services:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/1883' || exit 1"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1883 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
-  # 2. Modbus TCP Simulator (PLC)
 
+  # 2. Modbus TCP Simulator (PLC)
   modbus-plc:
     image: ghcr.io/sowinysoft/ccvnn/ccvnn-modbus-plc:latest
     build:
@@ -27,7 +26,7 @@ services:
     ports:
       - "5020:5020"
     restart: always
-    
+
   # 3. Triton Inference Server (CPU/GPU model server)
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3

@@ -1,6 +1,6 @@
 name: CCVNN Triton Microservice CI/CD
 
-on:
+#on:
   push:
     branches: [ "main", "master" ]
   pull_request:
