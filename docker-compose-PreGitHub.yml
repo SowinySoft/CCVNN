@@ -1,0 +1,74 @@
+#version: '3.8'
+
+services:
+  # 1. Mosquitto MQTT Broker
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -c 1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # 2. Modbus TCP Simulator (PLC)
+  modbus-plc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ccvnn-plc-sim
+    command: python3 -m watcher.simulators.modbus_server --port 5020
+    ports:
+      - "5020:5020"
+    restart: unless-stopped
+
+  # 3. Triton Inference Server (CPU/GPU model server)
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:24.01-py3
+    container_name: ccvnn-triton
+    command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    volumes:
+      - ./models:/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # 4. CCVNN Safety Watcher Edge Service
+  watcher-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ccvnn-watcher:latest
+    container_name: ccvnn-watcher
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      modbus-plc:
+        condition: service_started
+    environment:
+      - MQTT_BROKER=mqtt-broker
+      - MQTT_PORT=1883
+      - PLC_IP=modbus-plc
+      - PLC_PORT=5020
+      - TRITON_HOST=triton-server
+      - TRITON_PORT=8001
+      - DB_PATH=/app/data/watcher_buffer.db
+    volumes:
+      - ccvnn-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ccvnn-data:

@@ -1,0 +1,12 @@
+.venv
+.git
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+htmlcov
+.coverage
+dist
+build
+*.egg-info

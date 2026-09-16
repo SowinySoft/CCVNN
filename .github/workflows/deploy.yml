@@ -14,6 +14,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -22,49 +29,35 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install tritonclient[grpc] numpy
+          pip install "tritonclient[grpc]" numpy
 
-      # STEP 1: Launch Triton with detailed logging
-      - name: Start Triton Inference Server
+      - name: Start Triton via Docker Compose
         run: |
-          docker run -d \
-            --name triton-server \
-            -p 8000:8000 \
-            -p 8001:8001 \
-            -p 8002:8002 \
-            -v ${{ github.workspace }}/model_repository:/models \
-            nvcr.io/nvidia/tritonserver:26.08-py3 \
-            tritonserver --model-repository=/models --log-verbose=1 --strict-model-config=false
+          docker compose up -d triton-server
 
-      # STEP 2: Wait & Dump Logs immediately if unready
-      - name: Wait for Triton Readiness or Dump Logs
+      - name: Wait for Triton gRPC & HTTP Readiness
         run: |
-          echo "Checking Triton Server readiness..."
+          echo "Waiting for Triton Server to become ready..."
           for i in {1..30}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
-            if [ "$STATUS" -eq 200 ]; then
-              echo "Triton Server is READY!"
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
+            if [ "$HTTP_STATUS" -eq 200 ] && nc -z 127.0.0.1 8001; then
+              echo "Triton Server is READY on ports 8000 and 8001!"
               exit 0
             fi
-            echo "Waiting for Triton ($i/30)... status: $STATUS"
-            sleep 2
+            echo "Waiting for Triton ($i/30)... status: $HTTP_STATUS"
+            sleep 3
           done
 
-          echo "ERROR: Triton failed to become ready in 60s. Printing container logs:"
-          docker logs triton-server
+          echo "ERROR: Triton server failed to ready up. Dumping logs:"
+          docker compose logs --tail=100
           exit 1
-          
-      # STEP 3: Verify Step Execution Order (Run test after container is ready)
+
       - name: Run Synthetic Ingestion Test
         run: |
-          python /home/runner/work/CCVNN/CCVNN/triton_stream_sim.py
+          python3 triton_stream_sim.py
 
-      # STEP 4: Debug Container Logs Step (Executes automatically on step failure)
-      - name: Fetch Triton Container Logs on Failure
+      - name: Debug Logs on Failure
         if: failure()
         run: |
-          echo "=== TRITON SERVER CONTAINER LOGS ==="
-          docker logs triton-server --tail 200
-          echo "=== CONTAINER NETWORK & PORT STATUS ==="
-          docker ps -a
-          curl -v http://127.0.0.1:8000/v2/health/ready || true
+          docker compose ps
+          docker compose logs --tail=200

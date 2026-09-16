@@ -31,9 +31,10 @@ def test_plc_actuation_success(mock_client_cls):
     mock_client.close.assert_called_once()
     print("✓ Modbus TCP actuation success test passed.")
 
+
+@patch("watcher.src.actuator.PLCActuator._trigger_rs485_fallback", return_value=False)
 @patch("watcher.src.actuator.ModbusTcpClient")
-def test_plc_connection_failure(mock_client_cls):
-    # Setup connection failure
+def test_plc_connection_failure(mock_client_cls, mock_fallback):
     mock_client = MagicMock()
     mock_client.connect.return_value = False
     mock_client_cls.return_value = mock_client
@@ -49,8 +50,7 @@ def test_plc_connection_failure(mock_client_cls):
     success = actuator.trigger_relay(plc_config)
 
     assert success is False
-    print("✓ PLC connection failure handling test passed.")
-
+    
 if __name__ == "__main__":
     test_plc_actuation_success()
     test_plc_connection_failure()

@@ -1,90 +1,92 @@
 services:
-  ccvnn-mqtt-broker:
-    image: eclipse-mosquitto:2.0
-    container_name: ccvnn-mqtt-broker
-    restart: always
+  # 1. Mosquitto MQTT Broker
+  mqtt-broker:
+    image: eclipse-mosquitto:latest
+    container_name: ccvnn-mqtt
     ports:
       - "1883:1883"
-    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t 'healthcheck' -m 'ping' || exit 1"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1883 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 5s
-    networks:
-      - ccvnn-net
 
-  ccvnn-plc-sim:
+# 2. Modbus TCP Simulator (PLC)
+  modbus-plc:
+    image: ghcr.io/sowinysoft/ccvnn/ccvnn-modbus-plc:latest
     build:
       context: .
-      dockerfile: docker/Dockerfile.plc
+      dockerfile: Dockerfile
     container_name: ccvnn-plc-sim
-    restart: always
+    environment:
+      PYTHONPATH: /app
+    command:
+      - python3
+      - -m
+      - watcher.simulators.modbus_server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5020"
     ports:
       - "5020:5020"
-    environment:
-      - PLC_PORT=5020
-    networks:
-      - ccvnn-net
-
-  ccvnn-db:
-    image: timescale/timescaledb:latest-pg15
-    container_name: ccvnn-db
-    restart: always
-    environment:
-      POSTGRES_DB: ccvnn_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-    ports:
-      - "5432:5432"
+    restart: "no"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ccvnn_db || exit 1"]
-      interval: 5s
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 5020), 2); s.close()\""]
+      interval: 2s
       timeout: 3s
-      retries: 5
-      start_period: 10s
-    volumes:
-      - ccvnn_pgdata:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - ccvnn-net
+      retries: 30
+      start_period: 5s
 
-  watcher-engine:
+  # 4. CCVNN Safety Watcher Edge Service
+  watcher-service:
+    image: ghcr.io/sowinysoft/ccvnn/ccvnn-watcher:latest
     build:
       context: .
-      dockerfile: docker/Dockerfile.watcher
-    container_name: ccvnn-watcher-engine
-    restart: always
+      dockerfile: Dockerfile
+    container_name: ccvnn-watcher
     depends_on:
-      ccvnn-mqtt-broker:
+      mqtt-broker:
         condition: service_healthy
-      ccvnn-db:
+      modbus-plc:
         condition: service_healthy
-      ccvnn-plc-sim:
-        condition: service_started
+      triton-server:
+        condition: service_healthy
     environment:
-      - PYTHONUNBUFFERED=1
-      - MQTT_BROKER=ccvnn-mqtt-broker
-      - MQTT_HOST=ccvnn-mqtt-broker
+      - MQTT_BROKER=mqtt-broker
       - MQTT_PORT=1883
-      - PLC_HOST=ccvnn-plc-sim
+      - PLC_IP=modbus-plc
       - PLC_PORT=5020
-      - DB_HOST=ccvnn-db
-      - DB_PORT=5432
-      - DB_NAME=ccvnn_db
-      - DB_USER=postgres
-      - DB_PASS=postgrespassword
-      - CONFIG_PATH=config/watcher_stress_test_rules.yaml
-    command: python watcher/daemon.py
+      - TRITON_HOST=triton-server
+      - TRITON_PORT=8001
+      - DB_PATH=/app/data/watcher_buffer.db
+      - PYTHONPATH=/app
     volumes:
+      - ccvnn-data:/app/data
       - ./config:/app/config
-    networks:
-      - ccvnn-net
-
-networks:
-  ccvnn-net:
-    driver: bridge
+    restart: unless-stopped
+    
+  # 3. Triton Inference Server (CPU/GPU model server)
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:26.08-py3
+    container_name: ccvnn-triton
+    command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+    volumes:
+      - ./model_repository:/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
-  ccvnn_pgdata:
+  ccvnn-data:
