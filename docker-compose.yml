@@ -68,6 +68,7 @@ services:
       - DB_PATH=/app/data/watcher_buffer.db
     volumes:
       - ccvnn-data:/app/data
+      - ./config:/app/config  # Mount rules configuration folder
     restart: unless-stopped
 
 volumes:
