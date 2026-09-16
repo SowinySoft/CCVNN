@@ -1,7 +1,9 @@
+#version: '3.8'
+
 services:
   # 1. Mosquitto MQTT Broker
   mqtt-broker:
-    image: eclipse-mosquitto:latest
+    image: eclipse-mosquitto:2.0
     container_name: ccvnn-mqtt
     ports:
       - "1883:1883"
@@ -17,13 +19,14 @@ services:
 
   # 2. Modbus TCP Simulator (PLC)
   modbus-plc:
-    image: ghcr.io/sowinysoft/ccvnn-modbus-plc:latest
-    # Local build section removed to force pulling pre-built image from GHCR
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: ccvnn-plc-sim
     command: python3 -m watcher.simulators.modbus_server --port 5020
     ports:
       - "5020:5020"
-    restart: always
+    restart: unless-stopped
 
   # 3. Triton Inference Server (CPU/GPU model server)
   triton-server:
@@ -45,8 +48,10 @@ services:
 
   # 4. CCVNN Safety Watcher Edge Service
   watcher-service:
-    image: ghcr.io/sowinysoft/ccvnn-watcher:latest
-    # Local build section removed to pull pre-built image from GHCR
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ccvnn-watcher:latest
     container_name: ccvnn-watcher
     depends_on:
       mqtt-broker:

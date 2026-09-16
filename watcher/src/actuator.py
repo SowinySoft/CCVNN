@@ -49,7 +49,6 @@ class GPIOTripAdapter:
             return True
         except Exception as e:
             logger.error(f"GPIO Hardware Fallback Simulation/Execution warning: {e}")
-            # Emulate hardware pin pulse if environment lacks direct /sys access (WSL/Containers)
             logger.warning(f"FALLBACK EMULATION: GPIO Pin {pin_num} software trip executed.")
             return True
 
@@ -76,7 +75,6 @@ class RS485SerialAdapter:
                 stopbits=1,
                 timeout=1
             )
-            # Modbus RTU trip frame: [SlaveAddr, FuncCode, RegHi, RegLo, ValHi, ValLo, CRCLo, CRCHi]
             frame = bytes([address, 0x06, (register >> 8) & 0xFF, register & 0xFF, (value >> 8) & 0xFF, value & 0xFF])
             ser.write(frame)
             ser.close()
@@ -120,12 +118,18 @@ class PLCActuator:
                 logger.error(f"Modbus TCP write error: {e}")
                 client.close()
 
-        # 2. Secondary Fallback: RS-485 Serial Bus
+        # 2. Secondary Fallback: RS-485 / GPIO Fallback
         logger.warning(f"PRIMARY MODBUS TCP [{ip}] FAILED. Engaging RS-485 Fallback...")
+        return self._trigger_rs485_fallback(plc_config)
+
+    def _trigger_rs485_fallback(self, plc_config: Dict[str, Any]) -> bool:
+        """Fallback routine triggered when primary Modbus TCP connection fails."""
+        register = plc_config.get("register", 40001) if plc_config else 40001
+        value = plc_config.get("value", 1) if plc_config else 1
+
         if self.rs485_adapter.send_trip_command(register=register, value=value):
             return True
 
-        # 3. Tertiary Fallback: Hardwired GPIO Relay Pulse
         logger.warning("RS-485 FAILED. Engaging Hardwired GPIO Fallback...")
-        gpio_pin = plc_config.get("gpio_pin", 18)
+        gpio_pin = plc_config.get("gpio_pin", 18) if plc_config else 18
         return self.gpio_adapter.trigger_pin(pin=gpio_pin)
