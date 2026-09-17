@@ -96,3 +96,23 @@ std::vector<float> extract12ElementFeatureVector(const cv::Mat& imagePatch) {
         localContrast, densityVariance, structuralMoment
     };
 }
+// Append to the end of cpp_glass_to_glass_profiler.cpp
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <image_path>\n";
+        return 1;
+    }
+
+    cv::Mat img = cv::imread(argv[1]);
+    if (img.empty()) {
+        std::cerr << "Error: Could not load image " << argv[1] << "\n";
+        return 1;
+    }
+
+    std::vector<float> features = extract12ElementFeatureVector(img);
+    for (size_t i = 0; i < features.size(); ++i) {
+        std::cout << features[i] << (i + 1 == features.size() ? "" : ",");
+    }
+    std::cout << std::endl;
+    return 0;
+}
