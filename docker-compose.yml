@@ -1,4 +1,13 @@
 services:
+  plc-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.plc
+    container_name: ccvnn-plc-sim
+    restart: unless-stopped
+    ports:
+      - "5020:5020"
+
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
     container_name: tritonserver_prod
@@ -32,11 +41,6 @@ services:
           memory: 8G
         reservations:
           memory: 2G
-          # Uncomment for GPU enablement on CUDA-capable host:
-          # devices:
-          #   - driver: nvidia
-          #     count: all
-          #     capabilities: [gpu]
 
   prometheus:
     image: prom/prometheus:latest
