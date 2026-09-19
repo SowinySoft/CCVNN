@@ -1,0 +1,62 @@
+name: "ccvnn_v14_model_a"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+# Define input & output tensors (adjust dims to match your feature layer shape)
+input [
+  {
+    name: "input_tensor"
+    data_type: TYPE_FP32
+    dims: [ -1 ] # e.g., [ 128 ] or [ 3, 224, 224 ]
+  }
+]
+
+output [
+  {
+    name: "output_tensor"
+    data_type: TYPE_FP32
+    dims: [ -1 ] # e.g., [ 10 ] or [ 1 ]
+  }
+]
+
+# Enable TensorRT GPU execution accelerator with FP16 precision
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator : [ {
+      name : "tensorrt"
+      parameters { key: "precision_mode" value: "FP16" }
+      parameters { key: "max_workspace_size_bytes" value: "2147483648" } # 2GB workspace
+    }]
+  }
+}
+
+# Dynamic batching: coalesces incoming gRPC requests up to max_queue_delay
+dynamic_batching {
+  preferred_batch_size: [ 16, 32, 64 ]
+  max_queue_delay_microseconds: 200
+}
+
+# Multiple model execution instances running concurrently on GPU 0
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+# Optional: Warmup payload to pre-allocate CUDA memory and optimize engine build on boot
+model_warmup [
+  {
+    name: "warmup_batch_16"
+    batch_size: 16
+    inputs {
+      key: "input_tensor"
+      value {
+        data_type: TYPE_FP32
+        dims: [ -1 ]
+        zero_data: true
+      }
+    }
+  }
+]

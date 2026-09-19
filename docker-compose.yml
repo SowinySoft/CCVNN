@@ -1,92 +1,63 @@
 services:
-  # 1. Mosquitto MQTT Broker
-  mqtt-broker:
-    image: eclipse-mosquitto:latest
-    container_name: ccvnn-mqtt
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 1883 || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-# 2. Modbus TCP Simulator (PLC)
-  modbus-plc:
-    image: ghcr.io/sowinysoft/ccvnn/ccvnn-modbus-plc:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ccvnn-plc-sim
-    environment:
-      PYTHONPATH: /app
-    command:
-      - python3
-      - -m
-      - watcher.simulators.modbus_server
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5020"
-    ports:
-      - "5020:5020"
-    restart: "no"
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 5020), 2); s.close()\""]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-      start_period: 5s
-
-  # 4. CCVNN Safety Watcher Edge Service
-  watcher-service:
-    image: ghcr.io/sowinysoft/ccvnn/ccvnn-watcher:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: ccvnn-watcher
-    depends_on:
-      mqtt-broker:
-        condition: service_healthy
-      modbus-plc:
-        condition: service_healthy
-      triton-server:
-        condition: service_healthy
-    environment:
-      - MQTT_BROKER=mqtt-broker
-      - MQTT_PORT=1883
-      - PLC_IP=modbus-plc
-      - PLC_PORT=5020
-      - TRITON_HOST=triton-server
-      - TRITON_PORT=8001
-      - DB_PATH=/app/data/watcher_buffer.db
-      - PYTHONPATH=/app
-    volumes:
-      - ccvnn-data:/app/data
-      - ./config:/app/config
-    restart: unless-stopped
-    
-  # 3. Triton Inference Server (CPU/GPU model server)
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
-    container_name: ccvnn-triton
-    command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
-    volumes:
-      - ./model_repository:/models
+    container_name: tritonserver_prod
     restart: unless-stopped
+    ports:
+      - "8000:8000"  # HTTP Inference API
+      - "8001:8001"  # gRPC Inference API
+      - "8002:8002"  # Metrics API
+    volumes:
+      - ./model_repository:/models:ro
+    environment:
+      - OMP_NUM_THREADS=1
+      - OMP_WAIT_POLICY=PASSIVE
+    command:
+      - tritonserver
+      - --model-repository=/models
+      - --model-control-mode=poll
+      - --repository-poll-secs=10
+      - --strict-model-config=false
+      - --log-verbose=0
+      - --exit-on-error=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+          # Uncomment for GPU enablement on CUDA-capable host:
+          # devices:
+          #   - driver: nvidia
+          #     count: all
+          #     capabilities: [gpu]
 
-volumes:
-  ccvnn-data:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_triton
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+    depends_on:
+      triton-server:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_triton
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus

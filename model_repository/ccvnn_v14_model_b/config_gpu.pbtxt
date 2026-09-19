@@ -1,0 +1,63 @@
+name: "ccvnn_v14_model_b"
+backend: "onnxruntime"
+max_batch_size: 128
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 14 ]
+  }
+]
+
+output [
+  {
+    name: "output_prediction"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+# Aggressive dynamic batching for GPU throughput
+dynamic_batching {
+  preferred_batch_size: [ 32, 64, 128 ]
+  max_queue_delay_microseconds: 2000  # Cap queue wait to 2.0 ms
+}
+
+# 2 CUDA instances on GPU 0 for stream concurrency
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+# Automatic TensorRT FP16 Engine Conversion
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator : [
+      {
+        name : "tensorrt"
+        parameters { key: "precision_mode" value: "FP16" }
+        parameters { key: "max_workspace_size_bytes" value: "1073741824" }
+      }
+    ]
+  }
+}
+
+# Synthetic model warmup to pre-compile TRT engines and initialize CUDA streams
+model_warmup [
+  {
+    name: "synthetic_gpu_warmup"
+    batch_size: 1
+    inputs {
+      key: "input_vector"
+      value {
+        data_type: TYPE_FP32
+        dims: [ 14 ]
+        zero_data: true
+      }
+    }
+  }
+]

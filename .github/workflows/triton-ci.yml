@@ -21,7 +21,7 @@ jobs:
       - name: Install System Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopencv-dev pkg-config build-essential
+          sudo apt-get install -y libopencv-dev pkg-config build-essential jq
 
       - name: Compile C++ Edge Engine Shared Library
         run: |
@@ -43,7 +43,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless
+          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt
 
       - name: Start Triton via Docker Compose
         run: |
@@ -68,7 +68,7 @@ jobs:
 
       - name: Run Synthetic Ingestion Test
         run: |
-          python3 triton_stream_sim.py
+          python3 scripts/triton_client_stream.py
 
       - name: Debug Logs on Failure
         if: failure()

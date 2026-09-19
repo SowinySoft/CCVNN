@@ -1,0 +1,42 @@
+groups:
+  - name: triton_inference_alerts
+    rules:
+      # Alert when Triton server instance goes unreachable
+      - alert: TritonServerDown
+        expr: up{job="tritonserver"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Triton Inference Server is down"
+          description: "Triton target {{ $labels.instance }} has been unreachable for more than 1 minute."
+
+      # Alert when average server queue latency exceeds 1,000 µs (1.0 ms)
+      - alert: TritonHighQueueLatency
+        expr: (sum(rate(nv_inference_request_duration_us{request_type="queue"}[2m])) by (model) / (sum(rate(nv_inference_request_success[2m])) by (model) > 0)) > 1000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Queue Latency on model {{ $labels.model }}"
+          description: "Average queue delay for model '{{ $labels.model }}' exceeds 1,000 µs (1.0 ms) over 2 minutes (current: {{ $value | printf \"%.2f\" }} µs)."
+
+      # Alert immediately when model execution failures occur
+      - alert: TritonModelInferenceFailures
+        expr: sum(rate(nv_inference_request_failure[2m])) by (model) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Inference Failures on model {{ $labels.model }}"
+          description: "Model '{{ $labels.model }}' is failing inference requests at a rate of {{ $value | printf \"%.2f\" }} failures/sec."
+
+      # Alert when total request latency exceeds target SLA threshold (5,000 µs / 5.0 ms)
+      - alert: TritonHighTotalLatency
+        expr: (sum(rate(nv_inference_request_duration_us[2m])) by (model) / (sum(rate(nv_inference_request_success[2m])) by (model) > 0)) > 5000
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Total Latency on model {{ $labels.model }}"
+          description: "Average total processing latency for model '{{ $labels.model }}' exceeds 5.0 ms (current: {{ $value | printf \"%.2f\" }} µs)."

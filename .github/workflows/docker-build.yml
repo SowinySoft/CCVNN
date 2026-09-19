@@ -16,7 +16,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Convert repository owner to lowercase for Docker registry compatibility
       - name: Set lowercase repository owner
         run: |
           echo "OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
@@ -36,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.plc
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/ccvnn/ccvnn-modbus-plc:latest
           cache-from: type=gha
@@ -47,6 +46,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          #file: ./Dockerfile.watcher
           file: ./Dockerfile
           push: true
           tags: ghcr.io/${{ env.OWNER_LC }}/ccvnn/ccvnn-watcher:latest

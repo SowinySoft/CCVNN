@@ -20,7 +20,7 @@ struct Buffer {
 
 int main(int argc, char** argv) {
     std::string device_path = (argc > 1) ? argv[1] : "/dev/video0";
-    std::string model_path = (argc > 2) ? argv[2] : "models/ccvnn_traced.pt";
+    std::string model_path = (argc > 2) ? argv[2] : "model_repository/ccvnn_v14_model_b/1/model.pt";
 
     at::set_num_threads(1);
     at::set_num_interop_threads(1);
@@ -31,6 +31,7 @@ int main(int argc, char** argv) {
     try {
         module = torch::jit::load(model_path);
         module.eval();
+        std::cout << "[✓] Loaded V14 TorchScript model: " << model_path << "\n";
     } catch (...) {
         std::cerr << "[!] Note: Could not load model " << model_path << ", using synthetic tensor inference.\n";
     }
@@ -97,7 +98,8 @@ int main(int argc, char** argv) {
     cv::Mat resized;
     cv::resize(raw_yuyv, resized, cv::Size(32, 32));
 
-    auto input = torch::rand({1, 9});
+    // V14 14-element FP32 input vector specification
+    auto input = torch::rand({1, 14}, torch::kFloat32);
     if (module.get_methods().size() > 0) {
         module.forward({input});
     }
@@ -105,7 +107,7 @@ int main(int argc, char** argv) {
     auto t1 = std::chrono::high_resolution_clock::now();
     double latency_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-    std::cout << "[✓] Zero-Copy Frame Latency: " << latency_ms << " ms\n";
+    std::cout << "[✓] Zero-Copy V14 Frame Latency: " << latency_ms << " ms\n";
 
     // Requeue & Cleanup
     ioctl(video_fd, VIDIOC_QBUF, &buf);
