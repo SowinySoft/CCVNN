@@ -2,9 +2,9 @@ name: CCVNN - E2E Integration Tests
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision", "v*" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision" ]
 
 jobs:
   test-pipeline:
@@ -41,24 +41,48 @@ jobs:
       - name: Start Docker services
         run: docker compose up -d --build
 
-      - name: Wait for service readiness
+      - name: Wait for Triton Server & Stack Readiness
         run: |
+          echo "Waiting for Triton Server to become ready..."
           timeout 120s bash -c '
-            until nc -z 127.0.0.1 5020 && nc -z 127.0.0.1 8001; do
+            until curl -s -f http://localhost:8000/v2/health/ready > /dev/null 2>&1; do
+              echo "Waiting for Triton ready endpoint (http://localhost:8000/v2/health/ready)..."
               docker compose ps
-              sleep 2
+              sleep 3
             done
           '
+          echo "Triton Server is READY!"
+          
+      #- name: Wait for Triton Server Health
+        #run: |
+          #timeout 120s bash -c '
+            #until [ "$(docker inspect --format="{{.State.Health.Status}}" tritonserver_prod 2>/dev/null)" == "healthy" ]; do
+              #echo "Waiting for tritonserver_prod container health..."
+              #docker compose ps
+              #sleep 3
+            #done
+          #'
+          #echo "Triton container is HEALTHY!"
 
       - name: Verify service health
         run: |
           docker compose ps
           docker inspect --format '{{.State.Running}}' ccvnn-plc-sim || docker compose ps
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install pymodbus; fi
+
       - name: Run E2E Containerized Test
         run: |
-          python3 scripts/test_e2e_containerized.py
-
+          python scripts/test_e2e_containerized.py
+        
       - name: Run Watcher Unit & Integration Tests
         run: |
           PYTHONPATH=. pytest watcher/tests/

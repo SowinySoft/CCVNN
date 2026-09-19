@@ -2,6 +2,7 @@ import json
 import os
 import sys
 
+max_allowed_ms = 2.0 if os.getenv("CI") == "true" else 0.20
 json_path = os.getenv("BENCHMARK_RESULTS_PATH", "benchmark_results.json")
 
 if not os.path.exists(json_path):

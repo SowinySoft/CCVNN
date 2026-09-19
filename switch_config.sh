@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 set -e
 
-MODE=$(echo "${1:-cpu}" | tr '[:upper:]' '[:lower:]')
+#MODE=$(echo "${1:-cpu}" | tr '[:upper:]' '[:lower:]')
+# Auto-detect GPU if no argument is passed
+if [ -z "$1" ]; then
+  if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+    MODE="gpu"
+  else
+    MODE="cpu"
+  fi
+else
+  MODE=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+fi
+
 MODEL_DIR="model_repository/ccvnn_v14_model_b"
 
 if [ ! -d "$MODEL_DIR" ]; then
