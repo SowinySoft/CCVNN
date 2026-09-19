@@ -8,6 +8,15 @@ services:
     ports:
       - "5020:5020"
 
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mqtt-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    command: >
+      sh -c "echo -e 'listener 1883\nallow_anonymous true' > /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
     container_name: tritonserver_prod

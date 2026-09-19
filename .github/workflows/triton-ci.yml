@@ -57,9 +57,9 @@ jobs:
           chmod +x switch_config.sh
           ./switch_config.sh cpu
 
-      - name: Start Triton via Docker Compose
+      - name: Start Services via Docker Compose
         run: |
-          docker compose up -d triton-server
+          docker compose up -d triton-server plc-sim mqtt-broker
 
       - name: Wait for Triton gRPC & HTTP Readiness
         run: |
