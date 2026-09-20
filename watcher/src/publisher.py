@@ -44,27 +44,27 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Failed to initialize offline SQLite database: {e}")
 
-    def _on_connect(self, client, userdata, flags, rc, properties=None):
-        if rc == 0:
+    def _on_connect(self, client, userdata, flags, reason_code, properties=None):
+        if reason_code == 0 or (hasattr(reason_code, "is_failure") and not reason_code.is_failure):
             self.is_connected = True
             logger.info(f"Connected to MQTT broker at {self.host}:{self.port}")
         else:
             self.is_connected = False
-            logger.warning(f"MQTT connection failed with code {rc}")
+            logger.warning(f"MQTT connection failed with reason code: {reason_code}")
 
-    def _on_disconnect(self, client, userdata, flags, rc, properties=None):
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties=None):
         self.is_connected = False
-        logger.warning("Disconnected from MQTT broker.")
+        logger.warning(f"Disconnected from MQTT broker (reason: {reason_code}).")
 
     def publish_event(self, sensor_id, rule, zone_id, confidence, bounding_box, tracking_id):
         topic = f"factory/{zone_id}/alerts/info"
         payload = {
-            "sensor_id": sensor_id,
-            "rule": rule,
-            "zone_id": zone_id,
-            "confidence": confidence,
-            "bounding_box": bounding_box,
-            "tracking_id": tracking_id
+            "sensor_id": str(sensor_id),
+            "rule": str(rule),
+            "zone_id": str(zone_id),
+            "confidence": float(confidence),
+            "bounding_box": list(bounding_box) if isinstance(bounding_box, (list, tuple)) else bounding_box,
+            "tracking_id": str(tracking_id)
         }
         self.publish_event_dict(payload, topic=topic)
 
@@ -130,3 +130,13 @@ class MQTTPublisher:
             logger.info(f"Flushed {len(rows)} offline messages to broker.")
         except Exception as e:
             logger.error(f"Error flushing SQLite buffer: {e}")
+
+    def disconnect(self):
+        """Gracefully disconnects the client and stops the network loop."""
+        try:
+            self.client.loop_stop()
+            self.client.disconnect()
+            self.is_connected = False
+            logger.info("MQTTPublisher disconnected gracefully.")
+        except Exception as e:
+            logger.error(f"Error disconnecting MQTTPublisher: {e}")

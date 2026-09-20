@@ -2,7 +2,7 @@ import json
 import time
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
-from watcher.publisher import MQTTPublisher
+from watcher.src.publisher import MQTTPublisher
 
 
 def test_mqtt_pipeline():
@@ -29,8 +29,11 @@ def test_mqtt_pipeline():
 
         publisher = MQTTPublisher(broker_host, broker_port)
 
-        # Allow connection handshake to complete
-        time.sleep(0.5)
+        # Wait for publisher connection handshake to complete
+        for _ in range(30):
+            if publisher.is_connected:
+                break
+            time.sleep(0.1)
 
         publisher.publish_event(
             sensor_id="cam_01",
@@ -52,3 +55,5 @@ def test_mqtt_pipeline():
     finally:
         sub_client.loop_stop()
         sub_client.disconnect()
+        if publisher:
+            publisher.disconnect()
