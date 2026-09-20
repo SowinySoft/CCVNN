@@ -12,13 +12,13 @@ except ImportError:
     CallbackAPIVersion = None
 
 from watcher.src.engine import SeverityRule
-from watcher.src.storage import OfflineStorage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MQTTPublisher")
 
 
 class MQTTPublisher:
+    """Thread-safe MQTT publisher with SQLite offline store-and-forward buffering."""
 
     def __init__(
         self,
@@ -26,22 +26,21 @@ class MQTTPublisher:
         port: int = 1883,
         db_path: str = "watcher_offline_queue.db",
     ):
-        self.storage = OfflineStorage()
         self.host = host
         self.port = port
         self.db_path = db_path
         self._init_db()
 
+        self.client: Optional[mqtt.Client] = None
         if mqtt:
             self.client = mqtt.Client(
                 CallbackAPIVersion.VERSION2 if CallbackAPIVersion else None,
                 protocol=mqtt.MQTTv5,
             )
             self._connect()
-        else:
-            self.client = None
 
-    def _init_db(self):
+    def _init_db(self) -> None:
+        """Ensures the SQLite offline message queue table is available."""
         conn = sqlite3.connect(self.db_path)
         try:
             with conn:
@@ -56,7 +55,8 @@ class MQTTPublisher:
         finally:
             conn.close()
 
-    def _buffer_message(self, topic: str, payload: Dict[str, Any]):
+    def _buffer_message(self, topic: str, payload: Dict[str, Any]) -> None:
+        """Buffers an unsent MQTT event to SQLite storage."""
         conn = sqlite3.connect(self.db_path)
         try:
             with conn:
@@ -64,83 +64,12 @@ class MQTTPublisher:
                     "INSERT INTO offline_messages (topic, payload) VALUES (?, ?)",
                     (topic, json.dumps(payload)),
                 )
+            logger.info(f"Buffered offline event to SQLite for topic [{topic}]")
         finally:
             conn.close()
 
-    def publish_event_dict(
-        self, payload: Dict[str, Any], topic: str = "watcher/safety/alerts"
-    ):
-        """Attempts MQTT delivery; falls back to SQLite buffer on connection failure."""
-        try:
-            if mqtt is None:
-                raise ConnectionError("paho-mqtt library not available")
-
-            client = mqtt.Client(
-                CallbackAPIVersion.VERSION2 if CallbackAPIVersion else None,
-                protocol=mqtt.MQTTv5,
-            )
-            client.connect(self.host, self.port, keepalive=2)
-            client.publish(topic, json.dumps(payload), qos=1)
-            client.disconnect()
-            logger.info(f"Published MQTT event directly to {topic}")
-        except Exception as e:
-            logger.warning(
-                f"MQTT publish failed ({e}). Buffering message to SQLite."
-            )
-            self._buffer_message(topic, payload)
-
-    def reconnect_and_flush(
-        self, host: Optional[str] = None, port: Optional[int] = None
-    ):
-        """Flushes all queued SQLite messages once broker connectivity is restored."""
-        if host:
-            self.host = host
-        if port:
-            self.port = port
-
-        conn = sqlite3.connect(self.db_path)
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, topic, payload FROM offline_messages ORDER BY id ASC"
-            )
-            rows = cursor.fetchall()
-
-            if not rows:
-                return
-
-            flushed_ids = []
-            for row_id, topic, payload_str in rows:
-                try:
-                    payload = json.loads(payload_str)
-                    if mqtt:
-                        client = mqtt.Client(
-                            CallbackAPIVersion.VERSION2 if CallbackAPIVersion else None,
-                            protocol=mqtt.MQTTv5,
-                        )
-                        client.connect(self.host, self.port, keepalive=2)
-                        client.publish(topic, json.dumps(payload), qos=1)
-                        client.disconnect()
-                        flushed_ids.append(row_id)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to flush queued message ID {row_id}: {e}"
-                    )
-                    break
-
-            if flushed_ids:
-                with conn:
-                    conn.executemany(
-                        "DELETE FROM offline_messages WHERE id = ?",
-                        [(i,) for i in flushed_ids],
-                    )
-                logger.info(
-                    f"Flushed {len(flushed_ids)} offline messages from SQLite queue."
-                )
-        finally:
-            conn.close()
-
-    def _connect(self):
+    def _connect(self) -> None:
+        """Initiates background MQTT broker connection loop."""
         try:
             if self.client:
                 self.client.connect(self.host, self.port, keepalive=60)
@@ -149,7 +78,24 @@ class MQTTPublisher:
                     f"Connected to MQTT broker at {self.host}:{self.port}"
                 )
         except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
+            logger.error(f"Failed to connect to MQTT broker ({self.host}:{self.port}): {e}")
+
+    def publish_event_dict(
+        self, payload: Dict[str, Any], topic: str = "watcher/safety/alerts"
+    ) -> bool:
+        """Publishes raw payload dictionary or buffers offline if unavailable."""
+        if self.client and self.client.is_connected():
+            try:
+                res = self.client.publish(topic, json.dumps(payload), qos=1)
+                if res.rc == mqtt.MQTT_ERR_SUCCESS:
+                    logger.info(f"Published MQTT event directly to [{topic}]")
+                    self.flush_offline_buffer()
+                    return True
+            except Exception as e:
+                logger.warning(f"Error publishing directly via MQTT: {e}")
+
+        self._buffer_message(topic, payload)
+        return False
 
     def publish_event(
         self,
@@ -160,6 +106,7 @@ class MQTTPublisher:
         bounding_box: list,
         tracking_id: str,
     ) -> bool:
+        """Formats a structured safety alert event and dispatches via MQTT."""
         severity_val = getattr(rule, "severity", "INFO")
         severity_str = (
             str(severity_val.value)
@@ -178,9 +125,7 @@ class MQTTPublisher:
             "confidence": round(confidence, 4),
             "bounding_box": bounding_box,
             "action_type": getattr(rule, "action_type", None),
-            "plc_config": getattr(
-                rule, "plc_config", None
-            ),
+            "plc_config": getattr(rule, "plc_config", None),
         }
 
         rule_topics = getattr(rule, "topics", None)
@@ -190,38 +135,58 @@ class MQTTPublisher:
             else [f"factory/{zone_id}/alerts/{severity_str.lower()}"]
         )
 
+        success = True
         for topic in target_topics:
-            if self.client and self.client.is_connected():
-                res = self.client.publish(topic, json.dumps(payload), qos=1)
-                if res.rc == mqtt.MQTT_ERR_SUCCESS:
-                    logger.info(
-                        f"Published alert to topic [{topic}]: {payload['event_id']}"
-                    )
-                    self.flush_offline_buffer()
-                else:
-                    self.storage.buffer_event(topic, payload)
-            else:
-                self.storage.buffer_event(topic, payload)
+            if not self.publish_event_dict(payload, topic=topic):
+                success = False
 
-        return True
+        return success
 
-    def flush_offline_buffer(self):
-        """Re-flushes cached events when broker connection is online."""
-        pending = self.storage.get_pending_events()
-        if not pending or not self.client or not self.client.is_connected():
+    def flush_offline_buffer(self) -> None:
+        """Flushes cached SQLite offline messages sequentially once connected."""
+        if not self.client or not self.client.is_connected():
             return
 
-        logger.info(
-            f"Flushing {len(pending)} cached offline events from SQLite..."
-        )
-        for row_id, topic, payload in pending:
-            res = self.client.publish(topic, json.dumps(payload), qos=1)
-            if res.rc == mqtt.MQTT_ERR_SUCCESS:
-                self.storage.remove_event(row_id)
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, topic, payload FROM offline_messages ORDER BY id ASC"
+            )
+            rows = cursor.fetchall()
 
-    def disconnect(self):
+            if not rows:
+                return
+
+            flushed_ids = []
+            for row_id, topic, payload_str in rows:
+                try:
+                    res = self.client.publish(topic, payload_str, qos=1)
+                    if res.rc == mqtt.MQTT_ERR_SUCCESS:
+                        flushed_ids.append(row_id)
+                    else:
+                        break
+                except Exception as e:
+                    logger.error(f"Failed to flush queued message ID {row_id}: {e}")
+                    break
+
+            if flushed_ids:
+                with conn:
+                    conn.executemany(
+                        "DELETE FROM offline_messages WHERE id = ?",
+                        [(i,) for i in flushed_ids],
+                    )
+                logger.info(
+                    f"Flushed {len(flushed_ids)} offline messages from SQLite queue."
+                )
+        finally:
+            conn.close()
+
+    def disconnect(self) -> None:
+        """Stops event loop and closes MQTT network connection."""
         if self.client:
-            self.client.loop_stop()
-            self.client.disconnect()
-        if hasattr(self.storage, "close"):
-            self.storage.close()
+            try:
+                self.client.loop_stop()
+                self.client.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting MQTT client: {e}")

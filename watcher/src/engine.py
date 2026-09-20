@@ -12,11 +12,12 @@ class SeverityRule:
     consecutive_frames: int
     severity: str
     action_type: str
-    plc_config: Optional[Dict[str, Any]] = field(default_factory=dict)
+    plc_config: Dict[str, Any] = field(default_factory=dict)
     topics: List[str] = field(default_factory=list)
 
 
 class DynamicSeverityEngine:
+    """Evaluates raw neural detections against configured debouncing & severity rules."""
 
     def __init__(self, config_path: Optional[str] = None):
         self.config_path = config_path
@@ -28,7 +29,8 @@ class DynamicSeverityEngine:
         if self.config_path:
             self.load_config(self.config_path)
 
-    def load_config(self, config_path: Optional[str] = None):
+    def load_config(self, config_path: Optional[str] = None) -> None:
+        """Loads or reloads severity rule configurations from a YAML file."""
         path_to_load = config_path or self.config_path
         if not path_to_load or not os.path.exists(path_to_load):
             raise FileNotFoundError(
@@ -37,7 +39,7 @@ class DynamicSeverityEngine:
 
         self.config_path = path_to_load
 
-        with open(path_to_load, "r") as f:
+        with open(path_to_load, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         default_cfg = data.get("default_debouncing") or {}
@@ -73,6 +75,7 @@ class DynamicSeverityEngine:
             )
 
     def evaluate(self, event_type: str) -> SeverityRule:
+        """Retrieves matching severity rule or returns system fallback."""
         return self.rules.get(event_type, self.default_rule)
 
     def process_detection(
@@ -81,7 +84,7 @@ class DynamicSeverityEngine:
         confidence: float,
         tracking_id: Optional[str] = None,
     ) -> Optional[SeverityRule]:
-        """Evaluates detection against debouncing criteria and returns active severity rule if triggered."""
+        """Evaluates detection persistence and returns rule if threshold is satisfied."""
         rule = self.evaluate(class_name)
         key = f"{class_name}:{tracking_id}" if tracking_id else class_name
 
@@ -99,7 +102,7 @@ class DynamicSeverityEngine:
     def reset_tracker(
         self, tracking_id: str, class_name: Optional[str] = None
     ) -> None:
-        """Resets state/debounce counts for a specific object or class stream."""
+        """Resets debounce counters and object tracking states."""
         key_str = f"{class_name}:{tracking_id}" if class_name else tracking_id
         self.frame_counters.pop(key_str, None)
 

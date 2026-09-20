@@ -39,6 +39,6 @@ COPY watcher/ /app/watcher/
 
 # Healthcheck for internal MQTT / service responsiveness
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python3 -c "import socket; s = socket.socket(); s.connect(('localhost', 1883))" || exit 1
+    CMD python3 -c "import socket; s = socket.socket(); s.connect(('localhost', 1883))" || exit 1
 
 CMD ["python3", "-m", "watcher.src.main"]

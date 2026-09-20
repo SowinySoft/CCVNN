@@ -2,9 +2,13 @@ name: CCVNN Triton Microservice CI/CD
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision", "v14*" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -21,7 +25,7 @@ jobs:
       - name: Install System Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopencv-dev pkg-config build-essential
+          sudo apt-get install -y libopencv-dev pkg-config build-essential jq
 
       - name: Compile C++ Edge Engine Shared Library
         run: |
@@ -40,35 +44,66 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless
+          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt pymodbus pytest
 
-      - name: Start Triton via Docker Compose
+      - name: Validate Dashboard JSON Syntax
         run: |
-          docker compose up -d triton-server
+          jq . triton_dashboard.json > /dev/null
+          echo "triton_dashboard.json syntax valid."
 
-      - name: Wait for Triton gRPC & HTTP Readiness
+      - name: Start Services via Docker Compose
         run: |
-          echo "Waiting for Triton Server to become ready..."
+          docker compose up -d triton-server plc-sim mqtt-broker
+
+      - name: Wait for Triton, MQTT & PLC Services Readiness
+        run: |
+          echo "Waiting for all containerized services (Triton, MQTT, PLC Sim)..."
           for i in {1..30}; do
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
+            
+            TRITON_READY=false
+            MQTT_READY=false
+            PLC_READY=false
+
             if [ "$HTTP_STATUS" -eq 200 ] && (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
-              echo "Triton Server is READY on ports 8000 and 8001!"
+              TRITON_READY=true
+            fi
+
+            if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
+              MQTT_READY=true
+            fi
+
+            if (echo > /dev/tcp/127.0.0.1/5020) 2>/dev/null; then
+              PLC_READY=true
+            fi
+
+            if [ "$TRITON_READY" = true ] && [ "$MQTT_READY" = true ] && [ "$PLC_READY" = true ]; then
+              echo "✓ All services are READY (Triton: 8000/8001, MQTT: 1883, PLC: 5020)!"
               exit 0
             fi
-            echo "Waiting for Triton ($i/30)... status: $HTTP_STATUS"
+
+            echo "Waiting for services ($i/30) [Triton: $TRITON_READY, MQTT: $MQTT_READY, PLC: $PLC_READY]..."
             sleep 3
           done
 
-          echo "ERROR: Triton server failed to ready up. Dumping logs:"
+          echo "ERROR: One or more services failed to start in time. Dumping container logs:"
           docker compose logs --tail=100
           exit 1
 
-      - name: Run Synthetic Ingestion Test
+      - name: Run Synthetic Ingestion & Stream Test
         run: |
-          python3 triton_stream_sim.py
+          python3 scripts/triton_client_stream.py
+
+      - name: Run End-to-End Containerized Test Pipeline
+        run: |
+          python3 scripts/test_e2e_containerized.py
+
+      - name: Check Latency SLA Gate
+        run: |
+          python3 scripts/check_latency_gate.py
 
       - name: Debug Logs on Failure
         if: failure()

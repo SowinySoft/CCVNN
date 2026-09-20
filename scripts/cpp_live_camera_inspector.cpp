@@ -1,4 +1,3 @@
-// File: scripts/cpp_live_camera_inspector.cpp
 #include <torch/script.h>
 #include <opencv2/opencv.hpp>
 #include <iostream>
@@ -6,6 +5,8 @@
 #include <deque>
 #include <numeric>
 #include <chrono>
+#include <cmath>
+#include <algorithm>
 
 // 5-Frame Temporal Hysteresis Filter
 class HysteresisFilter {
@@ -24,8 +25,12 @@ public:
     }
 };
 
-// Extracts 9 spatial/co-coordinate features from the largest contour in a frame
+// Extracts 14-element cumulative feature vector (v14) from live camera frame
 std::vector<float> extract_ccvnn_features(const cv::Mat& frame) {
+    if (frame.empty()) {
+        return std::vector<float>(14, 0.0f);
+    }
+
     cv::Mat gray, blurred, thresh;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::GaussianBlur(gray, blurred, cv::Size(5, 5), 0);
@@ -34,8 +39,25 @@ std::vector<float> extract_ccvnn_features(const cv::Mat& frame) {
     std::vector<std::vector<cv::Point>> contours;
     cv::findContours(thresh, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
+    float W = static_cast<float>(frame.cols);
+    float H = static_cast<float>(frame.rows);
+
+    cv::Scalar meanVal, stdDev;
+    cv::meanStdDev(gray, meanVal, stdDev);
+    float lightness = static_cast<float>(meanVal[0]) / 255.0f;
+    float densityVariance = static_cast<float>(stdDev[0]) / 255.0f;
+
+    cv::Mat edges;
+    cv::Canny(gray, edges, 50, 150);
+    float edgeDensity = static_cast<float>(cv::countNonZero(edges)) / (W * H);
+
     if (contours.empty()) {
-        return std::vector<float>(9, 0.0f); // Default zero-vector if no target detected
+        std::vector<float> vec(14, 0.0f);
+        vec[9] = lightness;
+        vec[10] = densityVariance;
+        vec[11] = edgeDensity;
+        vec[12] = 0.5f;
+        return vec;
     }
 
     // Locate primary inspection target
@@ -47,20 +69,33 @@ std::vector<float> extract_ccvnn_features(const cv::Mat& frame) {
     float cx = (m.m00 != 0) ? static_cast<float>(m.m10 / m.m00) : 0.0f;
     float cy = (m.m00 != 0) ? static_cast<float>(m.m01 / m.m00) : 0.0f;
 
-    // Normalize features relative to frame dimensions (9-element co-coordinate vector)
-    float W = static_cast<float>(frame.cols);
-    float H = static_cast<float>(frame.rows);
+    // Moment-based spatial rotation angle
+    float rotationAngle = static_cast<float>(0.5 * std::atan2(2 * m.mu11, m.mu20 - m.mu02));
+    float normRotation = (rotationAngle + static_cast<float>(M_PI) / 2.0f) / static_cast<float>(M_PI);
+    normRotation = std::clamp(normRotation, 0.0f, 1.0f);
+
+    // Saturation Index (HSV Space)
+    cv::Mat hsv;
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+    std::vector<cv::Mat> hsvPlanes;
+    cv::split(hsv, hsvPlanes);
+    float saturationIndex = static_cast<float>(cv::mean(hsvPlanes[1])[0]) / 255.0f;
 
     return {
-        bbox.x / W,
-        bbox.y / H,
-        bbox.width / W,
-        bbox.height / H,
-        cx / W,
-        cy / H,
-        static_cast<float>(cv::contourArea(*max_it)) / (W * H),
-        static_cast<float>(cv::arcLength(*max_it, true)) / (2.0f * (W + H)),
-        (bbox.height > 0) ? static_cast<float>(bbox.width) / bbox.height : 0.0f
+        bbox.x / W,                                              // 1. bbox_x
+        bbox.y / H,                                              // 2. bbox_y
+        bbox.width / W,                                          // 3. bbox_w
+        bbox.height / H,                                         // 4. bbox_h
+        cx / W,                                                  // 5. cx
+        cy / H,                                                  // 6. cy
+        static_cast<float>(cv::contourArea(*max_it)) / (W * H),  // 7. area
+        static_cast<float>(cv::arcLength(*max_it, true)) / (2.0f * (W + H)), // 8. perimeter
+        (bbox.height > 0) ? static_cast<float>(bbox.width) / bbox.height : 0.0f, // 9. aspect_ratio
+        lightness,                                               // 10. lightness
+        densityVariance,                                         // 11. densityVariance
+        edgeDensity,                                             // 12. edgeDensity
+        normRotation,                                            // 13. normRotation
+        saturationIndex                                          // 14. saturationIndex
     };
 }
 
@@ -78,7 +113,7 @@ int main(int argc, const char* argv[]) {
     try {
         module = torch::jit::load(model_path);
         module.eval();
-        std::cout << "[✓] Loaded TorchScript model: " << model_path << std::endl;
+        std::cout << "[✓] Loaded V14 TorchScript model: " << model_path << std::endl;
     } catch (const c10::Error& e) {
         std::cerr << "[!] Error loading model: " << e.what() << std::endl;
         return -1;
@@ -98,24 +133,28 @@ int main(int argc, const char* argv[]) {
     HysteresisFilter filter;
     cv::Mat frame;
 
-    std::cout << "[+] Starting real-time inspection loop. Press 'q' to exit..." << std::endl;
+    std::cout << "[+] Starting real-time V14 inspection loop. Press 'q' to exit..." << std::endl;
 
     while (cap.read(frame)) {
         auto t_start = std::chrono::high_resolution_clock::now();
 
-        // 3. Extract 9-element feature vector
+        // 3. Extract 14-element feature vector
         std::vector<float> features = extract_ccvnn_features(frame);
 
-        // 4. Zero-copy wrapper into PyTorch Tensor [1, 9]
-        torch::Tensor input_tensor = torch::from_blob(features.data(), {1, 9}, torch::kFloat32);
+        // 4. Zero-copy wrapper into PyTorch Tensor [1, 14]
+        torch::Tensor input_tensor = torch::from_blob(features.data(), {1, 14}, torch::kFloat32);
 
         // 5. Execute Inference
         std::vector<torch::IValue> inputs = {input_tensor};
         torch::Tensor output = module.forward(inputs).toTensor();
         
-        // Softmax output probabilities
-        torch::Tensor probs = torch::softmax(output, /*dim=*/1);
-        float pass_score = probs[0][1].item<float>();
+        float pass_score = 0.0f;
+        if (output.numel() == 1) {
+            pass_score = output.item<float>();
+        } else {
+            torch::Tensor probs = torch::softmax(output, /*dim=*/1);
+            pass_score = probs[0][1].item<float>();
+        }
 
         // 6. Apply Hysteresis Filtering
         bool pass_decision = filter.process(pass_score);
@@ -128,7 +167,7 @@ int main(int argc, const char* argv[]) {
         std::string label = (pass_decision ? "PASS" : "FAIL") + cv::format(" (Score: %.2f | Latency: %.3f ms)", pass_score, latency_ms);
         
         cv::putText(frame, label, cv::Point(20, 40), cv::FONT_HERSHEY_SIMPLEX, 0.8, status_color, 2);
-        cv::imshow("CCVNN Real-Time Edge Inspector", frame);
+        cv::imshow("CCVNN V14 Real-Time Edge Inspector", frame);
 
         if (cv::waitKey(1) == 'q') break;
     }

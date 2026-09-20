@@ -2,10 +2,10 @@
 infer_config {
   unique_id: 10
   gpu_ids: [0]
-  max_batch_size: 1
+  max_batch_size: 16
   backend {
     triton {
-      model_name: "ccvnn_inspector"
+      model_name: "ccvnn_hardswish_12d"
       version: -1
       model_repository_path: "./model_repository"
     }

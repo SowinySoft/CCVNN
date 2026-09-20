@@ -1,11 +1,36 @@
-# Global Fallback for dynamically discovered RTSP / gRPC camera streams
+version: "1.0"
+
+default_debouncing:
+  min_confidence: 0.50
+  consecutive_frames: 2
+
+# Global Fallback for dynamically discovered streams
 default_rule:
   persistence_threshold: 2
   heartbeat_interval: 10
   plc_register_base: 40001
   mqtt_topic_template: "factory/{cam_id}/hazard"
 
-# Explicit overrides for static camera hardware
+event_classes:
+  NO_HELMET:
+    display_name: "No Helmet Detected"
+    severity: "CRITICAL"
+    action_type: "PLC_RELAY_TRIP"
+    plc_config:
+      ip: "modbus-plc-sim"
+      port: 5020
+      register: 40001
+      value: 1
+    topics:
+      - "factory/cam_01/hazard"
+
+  UNAUTHORIZED_ZONE:
+    display_name: "Unauthorized Zone Access"
+    severity: "WARNING"
+    action_type: "MQTT_ALERT"
+    topics:
+      - "factory/cam_01/alerts"
+
 rules:
   cam_01:
     persistence_threshold: 2

@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/tritonserver:24.01-py3-igpu
+FROM nvcr.io/nvidia/tritonserver:26.08-py3-igpu
 
 # Set working directory inside container
 WORKDIR /opt/tritonserver

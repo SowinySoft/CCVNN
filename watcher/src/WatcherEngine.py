@@ -22,22 +22,19 @@ class WatcherEngine:
         self.config_path = config_path
         self.lock = threading.Lock()
 
-        # Config structures
         self.rules: Dict[str, dict] = {}
         self.default_rule: dict = {}
 
-        # Dynamic register tracking
         self.assigned_registers: Dict[int, str] = {}
         self.registered_cameras: Dict[str, dict] = {}
 
-        # Per-camera state tracking
         self.state_history: Dict[str, int] = {}
         self.active_alerts: Dict[str, bool] = {}
         self.frames_since_last_alert: Dict[str, int] = {}
 
         self._load_config()
 
-    def _load_config(self):
+    def _load_config(self) -> None:
         """Loads rule definitions, auto-creating default config if file is missing."""
         config_dir = os.path.dirname(self.config_path)
         if config_dir and not os.path.exists(config_dir):
@@ -60,13 +57,13 @@ class WatcherEngine:
                     }
                 },
             }
-            with open(self.config_path, "w") as f:
+            with open(self.config_path, "w", encoding="utf-8") as f:
                 yaml.dump(default_data, f, default_flow_style=False)
             logger.info(
                 f"Created default configuration file at: {self.config_path}"
             )
 
-        with open(self.config_path, "r") as f:
+        with open(self.config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         self.default_rule = data.get(
@@ -94,7 +91,6 @@ class WatcherEngine:
             if custom_config:
                 cfg = custom_config.copy()
             else:
-                # Auto-generate dynamic configuration using default_rule template
                 base_reg = self.default_rule.get("plc_register_base", 40001)
                 assigned_offset = len(self.registered_cameras)
                 target_reg = base_reg + assigned_offset
@@ -112,7 +108,6 @@ class WatcherEngine:
                     ).format(cam_id=cam_id),
                 }
 
-            # Register collision check
             plc_reg = cfg["plc_register"]
             if plc_reg in self.assigned_registers:
                 existing_cam = self.assigned_registers[plc_reg]
@@ -126,7 +121,6 @@ class WatcherEngine:
             self.registered_cameras[cam_id] = cfg
             self.rules[cam_id] = cfg
 
-            # Initialize tracking states
             self.state_history[cam_id] = 0
             self.active_alerts[cam_id] = False
             self.frames_since_last_alert[cam_id] = 0
@@ -147,7 +141,6 @@ class WatcherEngine:
         h_interval = cfg["heartbeat_interval"]
 
         with self.lock:
-            # Update persistence counter
             if raw_anomaly:
                 self.state_history[cam_id] += 1
             else:

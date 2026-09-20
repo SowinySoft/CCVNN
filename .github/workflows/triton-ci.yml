@@ -2,9 +2,13 @@ name: CCVNN Triton Microservice CI/CD
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision", "v*" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "V14_Cumulative_Vector_Vision" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -18,10 +22,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set lower-case branch tag
+        run: echo "BRANCH_TAG=$(echo ${{ github.ref_name }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Install System Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopencv-dev pkg-config build-essential
+          sudo apt-get install -y libopencv-dev pkg-config build-essential jq
 
       - name: Compile C++ Edge Engine Shared Library
         run: |
@@ -43,11 +50,16 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless
+          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt pymodbus
 
-      - name: Start Triton via Docker Compose
+      - name: Switch Model Config to CPU Mode for CI
         run: |
-          docker compose up -d triton-server
+          chmod +x switch_config.sh
+          ./switch_config.sh cpu
+
+      - name: Start Services via Docker Compose
+        run: |
+          docker compose up -d triton-server plc-sim mqtt-broker
 
       - name: Wait for Triton gRPC & HTTP Readiness
         run: |
@@ -58,7 +70,7 @@ jobs:
               echo "Triton Server is READY on ports 8000 and 8001!"
               exit 0
             fi
-            echo "Waiting for Triton ($i/30)... status: $HTTP_STATUS"
+            echo "Waiting for Triton ($i/30)... status:$HTTP_STATUS"
             sleep 3
           done
 
@@ -68,7 +80,7 @@ jobs:
 
       - name: Run Synthetic Ingestion Test
         run: |
-          python3 triton_stream_sim.py
+          python3 scripts/triton_client_stream.py
 
       - name: Debug Logs on Failure
         if: failure()

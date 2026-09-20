@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - 'prometheus_rules.yml'
+
+scrape_configs:
+  - job_name: 'tritonserver'
+    static_configs:
+      - targets: ['triton-server:8002']

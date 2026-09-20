@@ -9,16 +9,17 @@ if [ ! -f "$TARBALL" ]; then
   exit 1
 fi
 
-echo "[+] Provisioning CCVNN Edge Node..."
+echo "[+] Provisioning CCVNN V14 Edge Node..."
 
 # 1. Extract release files to /opt/ccvnn
 mkdir -p "$INSTALL_DIR"
+rm -rf /tmp/ccvnn_edge_release
 tar -xzf "$TARBALL" -C /tmp
 cp -r /tmp/ccvnn_edge_release/* "$INSTALL_DIR/"
 rm -rf /tmp/ccvnn_edge_release
 
 # 2. Grant execution permissions
-chmod +x "$INSTALL_DIR/bin/"*
+chmod +x "$INSTALL_DIR/bin/"* 2>/dev/null || true
 
 # 3. Configure Real-Time SCHED_FIFO & Memory Locking Limits
 if [ -w /etc/security/limits.conf ] && ! grep -q "# CCVNN RT Limits" /etc/security/limits.conf; then
@@ -41,14 +42,16 @@ fi
 
 # 5. Conditionally Register systemd Service (Physical Host Only)
 if pidof systemd >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
-    cp "$INSTALL_DIR/config/ccvnn.service" /etc/systemd/system/ccvnn.service
-    systemctl daemon-reload
-    systemctl enable ccvnn.service
-    echo "[✓] Registered systemd service: ccvnn.service"
+    if [ -f "$INSTALL_DIR/config/ccvnn.service" ]; then
+        cp "$INSTALL_DIR/config/ccvnn.service" /etc/systemd/system/ccvnn.service
+        systemctl daemon-reload
+        systemctl enable ccvnn.service
+        echo "[✓] Registered systemd service: ccvnn.service"
+    fi
 else
     echo "[!] Container environment detected (no PID 1 systemd). Skipped service registration."
 fi
 
 echo "========================================================"
-echo "[✓] CCVNN Engine Installed to $INSTALL_DIR"
+echo "[✓] CCVNN V14 Engine Installed to $INSTALL_DIR"
 echo "========================================================"
