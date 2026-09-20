@@ -11,7 +11,6 @@ TARGET_MODEL_NAME = os.getenv("MODEL_NAME", "ccvnn_v14_model_b")
 
 def generate_v14_payload(batch_size: int = 1) -> np.ndarray:
     """Generates a synthetic batch of 14-element FP32 feature vectors."""
-    # Features [0..11]: Spatial metadata | Feature [12]: normRotation | Feature [13]: saturationIndex
     return np.random.uniform(low=0.0, high=1.0, size=(batch_size, 14)).astype(np.float32)
 
 
@@ -20,7 +19,7 @@ async def process_simulated_stream(total_frames=150, fps_target=30):
     print(f"--- Starting CCVNN V14 Stream Simulator ({total_frames} frames @ {fps_target} FPS) ---")
     print(f"--- Target: {TRITON_URL} | Model: {TARGET_MODEL_NAME} ---")
 
-    # 1. Pre-flight Readiness Check
+    # Pre-flight Readiness Check
     try:
         is_ready = await client.is_model_ready(TARGET_MODEL_NAME)
         if not is_ready:
@@ -67,41 +66,8 @@ async def process_simulated_stream(total_frames=150, fps_target=30):
         await client.close()
         print(f"--- Stream Ingestion Finished: Processed {total_frames} frames ---")
 
+    print(f"[✓] Stream completed ({total_frames} frames).")
+
 
 if __name__ == "__main__":
     asyncio.run(process_simulated_stream())
-
-    print(f"[✓] Stream completed ({num_frames} frames).")
-    print(f"    Mean Latency : {mean_lat:.4f} ms")
-    print(f"    p50 Latency  : {p50:.4f} ms")
-    print(f"    p95 Latency  : {p95:.4f} ms")
-    print(f"    p99 Latency  : {p99:.4f} ms")
-
-    # Export benchmark metrics for check_latency_gate.py evaluation
-    benchmark_data = {
-        "summary_ms": {
-            "total_glass_to_glass": {
-                "mean": mean_lat,
-                "p50": p50,
-                "p95": p95,
-                "p99": p99,
-            }
-        }
-    }
-
-    output_json_path = os.getenv(
-        "BENCHMARK_RESULTS_PATH", "benchmark_results.json"
-    )
-    with open(output_json_path, "w") as f:
-        json.dump(benchmark_data, f, indent=2)
-    print(
-        f"[INFO] Benchmark results exported successfully to '{output_json_path}'."
-    )
-
-
-if __name__ == "__main__":
-    try:
-        run_triton_stream()
-    except Exception as e:
-        print(f"[!] Triton Stream Test Failed: {e}")
-        sys.exit(1)
