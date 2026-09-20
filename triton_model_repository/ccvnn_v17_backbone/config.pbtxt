@@ -1,0 +1,30 @@
+name: "ccvnn_v17_backbone"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+input [
+  {
+    name: "v_input_17"
+    data_type: TYPE_FP32
+    dims: [ 17 ]
+  }
+]
+
+output [
+  {
+    name: "hazard_score"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 1000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
