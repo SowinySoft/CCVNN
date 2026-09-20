@@ -56,22 +56,40 @@ jobs:
 
       - name: Start Services via Docker Compose
         run: |
-          docker compose up -d triton-server plc-sim
+          docker compose up -d triton-server plc-sim mqtt-broker
 
-      - name: Wait for Triton gRPC & HTTP Readiness
+      - name: Wait for Triton, MQTT & PLC Services Readiness
         run: |
-          echo "Waiting for Triton Server to become ready..."
+          echo "Waiting for all containerized services (Triton, MQTT, PLC Sim)..."
           for i in {1..30}; do
             HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
+            
+            TRITON_READY=false
+            MQTT_READY=false
+            PLC_READY=false
+
             if [ "$HTTP_STATUS" -eq 200 ] && (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
-              echo "Triton Server is READY on ports 8000 and 8001!"
+              TRITON_READY=true
+            fi
+
+            if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
+              MQTT_READY=true
+            fi
+
+            if (echo > /dev/tcp/127.0.0.1/5020) 2>/dev/null; then
+              PLC_READY=true
+            fi
+
+            if [ "$TRITON_READY" = true ] && [ "$MQTT_READY" = true ] && [ "$PLC_READY" = true ]; then
+              echo "✓ All services are READY (Triton: 8000/8001, MQTT: 1883, PLC: 5020)!"
               exit 0
             fi
-            echo "Waiting for Triton ($i/30)... status: $HTTP_STATUS"
+
+            echo "Waiting for services ($i/30) [Triton: $TRITON_READY, MQTT: $MQTT_READY, PLC: $PLC_READY]..."
             sleep 3
           done
 
-          echo "ERROR: Triton server failed to ready up. Dumping logs:"
+          echo "ERROR: One or more services failed to start in time. Dumping container logs:"
           docker compose logs --tail=100
           exit 1
 

@@ -1,4 +1,5 @@
 services:
+  # Edge PLC Simulator (v14 Industrial Safety Actuation)
   plc-sim:
     build:
       context: .
@@ -8,6 +9,7 @@ services:
     ports:
       - "5020:5020"
 
+  # MQTT Broker (v14 Hazard Event Messaging)
   mqtt-broker:
     image: eclipse-mosquitto:2.0
     container_name: ccvnn-mqtt-broker
@@ -17,6 +19,7 @@ services:
     command: >
       sh -c "echo -e 'listener 1883\nallow_anonymous true' > /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
 
+  # Core Triton Inference Server (v12 Baseline + v14 Compatibility)
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
     container_name: tritonserver_prod
@@ -51,6 +54,7 @@ services:
         reservations:
           memory: 2G
 
+  # Prometheus Telemetry Collector (v12 Baseline)
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus_triton
@@ -64,6 +68,7 @@ services:
       triton-server:
         condition: service_healthy
 
+  # Grafana Observability Dashboard (v12 Baseline)
   grafana:
     image: grafana/grafana:latest
     container_name: grafana_triton
