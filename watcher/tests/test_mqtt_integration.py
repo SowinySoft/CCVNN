@@ -2,7 +2,7 @@ import json
 import time
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
-from watcher.src.publisher import MQTTPublisher
+from watcher.publisher import MQTTPublisher
 
 
 def test_mqtt_pipeline():
@@ -17,8 +17,8 @@ def test_mqtt_pipeline():
 
     broker_host = "localhost"
     broker_port = 1883
-    
-    # Use wildcard to capture dynamically routed alert topics (e.g. factory/Zone_A/alerts/info)
+
+    # Use wildcard to capture dynamically routed alert topics
     subscribe_topic = "factory/#"
 
     publisher = None
@@ -28,8 +28,8 @@ def test_mqtt_pipeline():
         sub_client.loop_start()
 
         publisher = MQTTPublisher(broker_host, broker_port)
-        
-        # Allow connection handshake to complete so publisher doesn't trigger Store-and-Forward
+
+        # Allow connection handshake to complete
         time.sleep(0.5)
 
         publisher.publish_event(
@@ -41,12 +41,14 @@ def test_mqtt_pipeline():
             tracking_id=101
         )
 
-        time.sleep(0.5)
+        # Polling loop to avoid CI race condition
+        for _ in range(30):
+            if len(received_messages) > 0:
+                break
+            time.sleep(0.1)
 
-        assert len(received_messages) > 0
+        assert len(received_messages) > 0, "No MQTT messages were received within timeout."
 
     finally:
         sub_client.loop_stop()
         sub_client.disconnect()
-        if publisher is not None and hasattr(publisher, "close"):
-            publisher.close()
