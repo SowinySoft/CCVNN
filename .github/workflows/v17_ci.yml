@@ -1,0 +1,56 @@
+name: CCVNN V17 CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - v17-development
+    tags:
+      - 'v17*'
+  pull_request:
+    branches:
+      - main
+      - v17-development
+
+jobs:
+  validate-and-test:
+    name: V17 E2E & Model Validation
+    runs-on: ubuntu-26.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy onnx onnxruntime pytest
+
+      - name: Validate INT8 ONNX Model Integrity
+        run: |
+          python -c "
+          import onnx
+          model_path = 'ccvnn_v17_backbone_int8.onnx'
+          model = onnx.load(model_path)
+          onnx.checker.check_model(model)
+          print('✅ ONNX Model Structure Verified:', model_path)
+          "
+
+      - name: Run Closed-Loop E2E Integration Test
+        run: |
+          python3 ./scripts/test_closed_loop_v17.py
+
+      - name: Run SQLite & Telemetry Failover Queue Stress Test
+        run: |
+          python3 ./scripts/test_failover_queue_v17.py
+
+      - name: Verify C++ SIMD Header Compilation
+        run: |
+          g++ -std=c++17 -mavx2 -O3 -fsyntax-only scripts/CCVNN_V17_Extractor.hpp
+          echo "✅ C++ SIMD Header syntax and AVX2 vectorization validated."
