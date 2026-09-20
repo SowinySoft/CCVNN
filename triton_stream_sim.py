@@ -20,7 +20,7 @@ async def process_simulated_stream(total_frames=150, fps_target=30):
     print(f"--- Starting CCVNN V14 Stream Simulator ({total_frames} frames @ {fps_target} FPS) ---")
     print(f"--- Target: {TRITON_URL} | Model: {TARGET_MODEL_NAME} ---")
 
-    # 1. Pre-flight Model Readiness Check
+    # 1. Pre-flight Readiness Check
     try:
         is_ready = await client.is_model_ready(TARGET_MODEL_NAME)
         if not is_ready:
@@ -38,19 +38,15 @@ async def process_simulated_stream(total_frames=150, fps_target=30):
         for frame_count in range(1, total_frames + 1):
             vec_14d = generate_v14_payload(batch_size=1)
 
-            # Input configuration
             inputs = [grpcclient.InferInput("input_vector", vec_14d.shape, "FP32")]
             inputs[0].set_data_from_numpy(vec_14d)
 
-            # Explicit Requested Output configuration
             outputs = [grpcclient.InferRequestedOutput("output_prediction")]
 
-            # Execute Inference
             try:
                 response = await client.infer(model_name=TARGET_MODEL_NAME, inputs=inputs, outputs=outputs)
                 output = response.as_numpy("output_prediction")
             except Exception:
-                # Fallback to default inference without explicit output parameter if tensor name varies
                 response = await client.infer(model_name=TARGET_MODEL_NAME, inputs=inputs)
                 output_meta = response.get_response()
                 first_output_name = output_meta.outputs[0].name
@@ -59,7 +55,6 @@ async def process_simulated_stream(total_frames=150, fps_target=30):
             if frame_count % 30 == 0:
                 elapsed = time.time() - start_time
                 actual_fps = frame_count / elapsed
-                # Safe 1D/2D array indexing using flatten()
                 val = output.flatten()[0] if output is not None else 0.0
                 print(f"[Sim Frame #{frame_count:04d}] FPS: {actual_fps:.2f} | Latest Output: {val:.4f}")
 
