@@ -11,3 +11,14 @@ certs/*.csr
 __pycache__/
 *.db
 logs/*.jsonl
+
+data/
+datasets/
+*.csv
+*.parquet
+*.zip
+
+photos/
+*.jpg
+*.jpeg
+*.png
