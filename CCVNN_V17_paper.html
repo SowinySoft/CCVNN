@@ -200,5 +200,47 @@
     </div>
 </div>
 
+<section id="adaptive-thresholding">
+    <h2>Adaptive Signal Thresholding and Signal Stability Mechanisms</h2>
+    <p>To comply with <strong>ISO 13849-1</strong> (Safety Performance Levels PL_a–PL_e) and <strong>IEC 61496-1/3</strong>, CCVNN V17.0.0 integrates adaptive binarization alongside multi-frame temporal debounce filtering.</p>
+    
+    <h3>1. Otsu's Dynamic Binarization</h3>
+    <p>Rather than relying on static pixel constants, optimal intensity separation \( T^* \) is computed per frame by minimizing intra-class variance:</p>
+    <p>$$\sigma_w^2(T) = w_0(T)\sigma_0^2(T) + w_1(T)\sigma_1^2(T)$$</p>
+
+    <h3>2. Fixed vs. Adaptive Architecture Comparison</h3>
+    <table border="1" style="width:100%; text-align:left; border-collapse:collapse;">
+        <thead>
+            <tr style="background-color:#f2f2f2;">
+                <th>Evaluation Metric</th>
+                <th>Fixed Numerical Thresholds</th>
+                <th>Adaptive Otsu + Temporal Debounce</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Environmental Adaptation</strong></td>
+                <td>Rigid; sensitive to shift in ambient lux</td>
+                <td>Self-calibrating across bimodal luminance spreads</td>
+            </tr>
+            <tr>
+                <td><strong>Transient Noise Resilience</strong></td>
+                <td>Vulnerable to single-frame specular spikes</td>
+                <td>High; requires N consecutive positive frames</td>
+            </tr>
+            <tr>
+                <td><strong>PLC Signal Chattering</strong></td>
+                <td>High risk of rapid E-STOP toggling</td>
+                <td>Suppressed via stateful sliding-window buffer</td>
+            </tr>
+            <tr>
+                <td><strong>Zero-Copy Overhead</strong></td>
+                <td>~0.00 ms</td>
+                <td>~0.12 ms (CPU-bound matrix binarization)</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
 </body>
 </html>

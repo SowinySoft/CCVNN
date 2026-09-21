@@ -1,0 +1,18 @@
+==================================================
+  CCVNN V17 - MODBUS TCP / MQTT CONSUMER SERVICE
+==================================================
+Listening to MQTT Topic : ccvnn/v17/industrial/audit_report
+Target PLC Controller  : 192.168.10.45:502
+Press Ctrl+C to stop.
+
+
+==================================================
+[MQTT RECEIVE] Message received on topic 'ccvnn/v17/industrial/audit_report'
+==================================================
+Audit Summary: 2022 Images Processed | Hazards: 2022
+
+[!] CRITICAL: Hazard detected in audit payload. Triggering E-STOP Coil (1)...
+
+[PLC ACTUATION] Connecting to Modbus PLC at 192.168.10.45:502...
+Connection to (192.168.10.45, 502) failed: timed out
+[X] PLC Connection Failed: Unable to reach 192.168.10.45:502
