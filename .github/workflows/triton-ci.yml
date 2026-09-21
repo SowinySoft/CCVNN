@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [ "main", "master", "V14_Cumulative_Vector_Vision" ]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
   packages: read
