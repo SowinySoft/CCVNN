@@ -3,7 +3,7 @@ services:
   plc-sim:
     build:
       context: .
-      dockerfile: Dockerfile.plc
+      dockerfile: Dockerfile.plc            #3.7.4
     container_name: ccvnn-plc-sim
     restart: unless-stopped
     ports:
