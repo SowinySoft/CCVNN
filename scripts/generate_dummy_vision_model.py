@@ -13,11 +13,26 @@ except ImportError:
     from onnx import helper, TensorProto
 
 
-def main():
-    os.makedirs("model_repository/vector_vision_general_v1/1", exist_ok=True)
-    os.makedirs("model_repository/ccvnn_hazard_v17/1", exist_ok=True)
+def create_hazard_model():
+    target_dir = "model_repository/ccvnn_hazard_v17/1"
+    os.makedirs(target_dir, exist_ok=True)
 
-    # 1. Vision Stub
+    input_telemetry = helper.make_tensor_value_info("input_telemetry", TensorProto.FLOAT, ["batch", 4])
+    output_hazard = helper.make_tensor_value_info("output_hazard", TensorProto.FLOAT, ["batch", 1])
+
+    node = helper.make_node("ReduceMean", inputs=["input_telemetry"], outputs=["output_hazard"], axes=[1], keepdims=1)
+    graph = helper.make_graph([node], "hazard_model", [input_telemetry], [output_hazard])
+    model = helper.make_model(graph, producer_name="ccvnn")
+    
+    path = os.path.join(target_dir, "model.onnx")
+    onnx.save(model, path)
+    print(f"[✓] Generated {path}")
+
+
+def create_vision_model():
+    target_dir = "model_repository/vector_vision_general_v1/1"
+    os.makedirs(target_dir, exist_ok=True)
+
     images = helper.make_tensor_value_info("images", TensorProto.FLOAT, ["batch", 3, 640, 640])
     num_detections = helper.make_tensor_value_info("num_detections", TensorProto.INT32, ["batch", 1])
     detection_boxes = helper.make_tensor_value_info("detection_boxes", TensorProto.FLOAT, ["batch", 100, 4])
@@ -29,21 +44,19 @@ def main():
     n3 = helper.make_node("Constant", inputs=[], outputs=["detection_scores"], value=helper.make_tensor("c3", TensorProto.FLOAT, [1, 100], [0.0] * 100))
     n4 = helper.make_node("Constant", inputs=[], outputs=["detection_classes"], value=helper.make_tensor("c4", TensorProto.INT32, [1, 100], [0] * 100))
 
-    g_vision = helper.make_graph([n1, n2, n3, n4], "vision_stub", [images], [num_detections, detection_boxes, detection_scores, detection_classes])
-    m_vision = helper.make_model(g_vision, producer_name="ccvnn_ci")
-    onnx.save(m_vision, "model_repository/vector_vision_general_v1/1/model.onnx")
-    print("[✓] Generated vector_vision_general_v1 model.onnx")
+    graph = helper.make_graph(
+        [n1, n2, n3, n4],
+        "vision_model",
+        [images],
+        [num_detections, detection_boxes, detection_scores, detection_classes],
+    )
+    model = helper.make_model(graph, producer_name="ccvnn")
 
-    # 2. Hazard Stub
-    input_telemetry = helper.make_tensor_value_info("input_telemetry", TensorProto.FLOAT, ["batch", 4])
-    output_hazard = helper.make_tensor_value_info("output_hazard", TensorProto.FLOAT, ["batch", 1])
-
-    nh = helper.make_node("Constant", inputs=[], outputs=["output_hazard"], value=helper.make_tensor("ch1", TensorProto.FLOAT, [1, 1], [0.0]))
-    g_hazard = helper.make_graph([nh], "hazard_stub", [input_telemetry], [output_hazard])
-    m_hazard = helper.make_model(g_hazard, producer_name="ccvnn_ci")
-    onnx.save(m_hazard, "model_repository/ccvnn_hazard_v17/1/model.onnx")
-    print("[✓] Generated ccvnn_hazard_v17 model.onnx")
+    path = os.path.join(target_dir, "model.onnx")
+    onnx.save(model, path)
+    print(f"[✓] Generated {path}")
 
 
 if __name__ == "__main__":
-    main()
+    create_hazard_model()
+    create_vision_model()
