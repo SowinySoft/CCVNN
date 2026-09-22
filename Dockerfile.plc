@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Install dependencies including pymodbus
 RUN pip install --no-cache-dir pymodbus
 
-COPY watcher/tests/mock_plc_server.py /app/mock_plc_server.py
+# Copy the watcher package and modules into the container
+COPY watcher /app/watcher
 
 EXPOSE 5020
 
-CMD ["python3", "/app/mock_plc_server.py", "--port", "5020"]
+CMD ["python3", "-m", "watcher.simulators.modbus_server", "--host", "::", "--port", "5020"]
