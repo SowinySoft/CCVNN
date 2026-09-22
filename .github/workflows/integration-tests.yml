@@ -61,10 +61,11 @@ jobs:
         run: |
           docker compose ps
 
-      - name: Run E2E Containerized Test
-        run: |
-          python scripts/test_e2e_containerized.py
-
+      - name: Run End-to-End Containerized Test Pipeline
+        env:
+          PLC_SLAVE_ID: "1"
+        run: python3 scripts/test_e2e_containerized.py
+        
       - name: Run Watcher Unit & Integration Tests
         run: |
           PYTHONPATH=. pytest watcher/tests/

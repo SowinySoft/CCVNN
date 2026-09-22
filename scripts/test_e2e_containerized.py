@@ -15,44 +15,42 @@ PLC_SLAVE_ID = int(os.getenv("PLC_SLAVE_ID", 1))
 
 
 def safe_write_register(client, addresses, value):
+    last_error = None
+
     for addr in addresses:
-        # Standard pymodbus 3.x write without invalid kwarg
         try:
-            res = client.write_register(addr, value)
-            if res and not res.isError():
-                return res, addr, None
-        except Exception:
-            pass
+            response = client.write_register(
+                address=addr,
+                value=value,
+                slave=PLC_SLAVE_ID,
+            )
 
-        # Try positional slave argument if required by specific pymodbus builds
-        for slave_arg in [PLC_SLAVE_ID, 1, 0]:
-            try:
-                res = client.write_register(addr, value, slave_arg)
-                if res and not res.isError():
-                    return res, addr, slave_arg
-            except Exception:
-                continue
-    return None, None, None
+            if response is not None and not response.isError():
+                return response, addr, PLC_SLAVE_ID
 
+            last_error = repr(response)
+        except Exception as exc:
+            last_error = repr(exc)
 
-def safe_read_holding_registers(client, address, count, active_slave):
-    try:
-        res = client.read_holding_registers(address, count=count)
-        if res and not res.isError():
-            return res
-    except Exception:
-        pass
+    raise AssertionError(
+        f"Unable to write registers {addresses} using slave ID "
+        f"{PLC_SLAVE_ID}. Last Modbus result: {last_error}"
+    )
 
-    if active_slave is not None:
-        try:
-            res = client.read_holding_registers(address, count=count, slave=active_slave)
-            if res and not res.isError():
-                return res
-        except Exception:
-            pass
+def read_holding_registers(client, address, count):
+    response = client.read_holding_registers(
+        address=address,
+        count=count,
+        slave=PLC_SLAVE_ID,
+    )
 
-    return client.read_holding_registers(address, count=count)
+    if response is None or response.isError():
+        raise AssertionError(
+            f"Unable to read register {address} using slave ID "
+            f"{PLC_SLAVE_ID}: {response!r}"
+        )
 
+    return response
 
 def verify_e2e_stack():
     logger.info("--- Starting V14 Cumulative Vector Vision Containerized E2E Pipeline Verification ---")
@@ -104,24 +102,28 @@ def verify_e2e_stack():
         target_addresses = [0, 1]
 
         for attempt in range(5):
-            write_res, active_addr, active_slave = safe_write_register(plc_client, target_addresses, 1)
-            if write_res and not write_res.isError():
-                break
-            time.sleep(1)
+            write_res, active_addr, active_slave = safe_write_register(
+                plc_client,
+                [0, 1],
+                1,
+            )
 
-        assert write_res and not write_res.isError(), f"Failed to write registers {target_addresses}! Error: {write_res}"
-
-        rr = safe_read_holding_registers(plc_client, active_addr, count=1, active_slave=active_slave)
-        assert not rr.isError(), f"Failed to read register {active_addr}! Error: {rr}"
-        assert rr.registers[0] == 1, f"Expected register value 1, got {rr.registers[0]}"
+            rr = read_holding_registers(plc_client, active_addr, count=1)
+            assert rr.registers[0] == 1, (
+                f"Expected register value 1, got {rr.registers[0]}"
+            )
         logger.info(f"✓ Modbus Register read/write verified (Address: {active_addr}, Slave ID: {active_slave}).")
 
     finally:
         if plc_client and active_addr is not None:
             try:
-                safe_write_register(plc_client, [active_addr], 0)
-            except Exception:
-                pass
+                plc_client.write_register(
+                    address=active_addr,
+                    value=0,
+                    slave=PLC_SLAVE_ID,
+                )
+            except Exception as exc:
+                logger.warning("Unable to reset register %s: %s", active_addr, exc)
             plc_client.close()
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
