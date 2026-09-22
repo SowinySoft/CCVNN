@@ -14,29 +14,41 @@ PLC_PORT = int(os.getenv("PLC_PORT", 5020))
 PLC_SLAVE_ID = int(os.getenv("PLC_SLAVE_ID", 1))
 
 
-def safe_write_register(client, addresses, value):
-    last_error = None
+def safe_write_register(client, address, values, slave_id=1, attempts=5):
+    last_result = None
 
-    for addr in addresses:
+    for attempt in range(attempts):
         try:
-            response = client.write_register(
-                address=addr,
-                value=value,
-                slave=PLC_SLAVE_ID,
+            if not client.connected and not client.connect():
+                raise ConnectionError("PLC connection could not be established")
+
+            result = client.write_registers(
+                address=address,
+                values=values,
+                slave=slave_id,
             )
+            last_result = result
 
-            if response is not None and not response.isError():
-                return response, addr, PLC_SLAVE_ID
+            if not result.isError():
+                return result, client, slave_id
 
-            last_error = repr(response)
         except Exception as exc:
-            last_error = repr(exc)
+            last_result = exc
+
+        # The simulator may reset a socket during startup. Reconnect before
+        # retrying rather than reusing the broken Modbus connection.
+        try:
+            client.close()
+        except Exception:
+            pass
+
+        time.sleep(1 + attempt)
 
     raise AssertionError(
-        f"Unable to write registers {addresses} using slave ID "
-        f"{PLC_SLAVE_ID}. Last Modbus result: {last_error}"
+        f"Unable to write registers {values} using slave ID {slave_id}. "
+        f"Last Modbus result: {last_result!r}"
     )
-
+    
 def read_holding_registers(client, address, count):
     response = client.read_holding_registers(
         address=address,
@@ -102,16 +114,27 @@ def verify_e2e_stack():
         target_addresses = [0, 1]
 
         for attempt in range(5):
-            write_res, active_addr, active_slave = safe_write_register(
-                plc_client,
-                [0, 1],
-                1,
-            )
+            if attempt:
+                plc_client.close()
+                time.sleep(1)
+                assert plc_client.connect(), f"PLC reconnect failed on attempt {attempt + 1}"
 
-            rr = read_holding_registers(plc_client, active_addr, count=1)
-            assert rr.registers[0] == 1, (
-                f"Expected register value 1, got {rr.registers[0]}"
-            )
+            try:
+                write_res, active_addr, active_slave = safe_write_register(
+                    plc_client,
+                    [0, 1],
+                    1,
+                )
+                rr = read_holding_registers(plc_client, active_addr, count=1)
+                assert rr.registers[0] == 1
+                break
+            except Exception:
+                if attempt == 4:
+                    raise
+                plc_client.close()
+                time.sleep(1)
+        else:
+            raise AssertionError("PLC Modbus verification failed after 5 attempts")
         logger.info(f"✓ Modbus Register read/write verified (Address: {active_addr}, Slave ID: {active_slave}).")
 
     finally:

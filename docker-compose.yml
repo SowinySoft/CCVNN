@@ -14,7 +14,7 @@ services:
       - -m
       - watcher.simulators.modbus_server
       - --host
-      - "::"
+      - "0.0.0.0"
       - --port
       - "5020"
     ports:
@@ -25,12 +25,13 @@ services:
       #timeout: 3s
       #retries: 12
       #start_period: 10s
+    healthcheck:
       test:
         [
           "CMD",
           "python3",
           "-c",
-          "import socket; s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM); s.settimeout(2); s.connect(('::1', 5020)); s.close()"
+          "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(2); s.connect(('127.0.0.1', 5020)); s.close()"
         ]
       interval: 5s
       timeout: 5s
