@@ -47,7 +47,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt pymodbus pytest
+          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt "pymodbus==3.7.4" pytest
 
       - name: Validate Dashboard JSON Syntax
         run: |
@@ -56,19 +56,20 @@ jobs:
 
       - name: Start Services via Docker Compose
         run: |
-          docker compose up -d triton-server plc-sim mqtt-broker
+          docker compose up -d --build triton-server plc-sim mqtt-broker
 
       - name: Wait for Triton, MQTT & PLC Services Readiness
         run: |
-          echo "Waiting for all containerized services (Triton, MQTT, PLC Sim)..."
           for i in {1..30}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
-            
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/v2/health/ready || true)
+
             TRITON_READY=false
             MQTT_READY=false
             PLC_READY=false
 
-            if [ "$HTTP_STATUS" -eq 200 ] && (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
+            if [ "$HTTP_STATUS" = "200" ] && \
+               (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
               TRITON_READY=true
             fi
 
@@ -76,20 +77,34 @@ jobs:
               MQTT_READY=true
             fi
 
-            if (echo > /dev/tcp/127.0.0.1/5020) 2>/dev/null; then
+            if python3 - <<'PY'
+from pymodbus.client import ModbusTcpClient
+
+client = ModbusTcpClient("127.0.0.1", port=5020, timeout=2)
+try:
+    if not client.connect():
+        raise SystemExit(1)
+
+    response = client.read_holding_registers(address=0, count=1, slave=1)
+    raise SystemExit(0 if response is not None and not response.isError() else 1)
+finally:
+    client.close()
+PY
+            then
               PLC_READY=true
             fi
 
-            if [ "$TRITON_READY" = true ] && [ "$MQTT_READY" = true ] && [ "$PLC_READY" = true ]; then
-              echo "✓ All services are READY (Triton: 8000/8001, MQTT: 1883, PLC: 5020)!"
+            if [ "$TRITON_READY" = true ] && \
+               [ "$MQTT_READY" = true ] && \
+               [ "$PLC_READY" = true ]; then
+              echo "All services are ready."
               exit 0
             fi
 
-            echo "Waiting for services ($i/30) [Triton: $TRITON_READY, MQTT: $MQTT_READY, PLC: $PLC_READY]..."
+            echo "Waiting ($i/30) [Triton: $TRITON_READY, MQTT: $MQTT_READY, PLC: $PLC_READY]..."
             sleep 3
           done
 
-          echo "ERROR: One or more services failed to start in time. Dumping container logs:"
           docker compose logs --tail=100
           exit 1
 
