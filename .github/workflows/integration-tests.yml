@@ -46,9 +46,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Start Docker Services
-        run: docker compose up -d --build
+# 1. Pre-generate dummy ONNX models BEFORE starting containers
+      - name: Generate Dummy Triton Vision Models
+        run: |
+          python scripts/generate_dummy_vision_model.py
 
+      # 2. Spin up Docker services with pre-populated model_repository mounts
+      - name: Start Docker Services
+        run: |
+          docker compose up -d --build
+      
       - name: Wait for Triton Server Readiness
         run: |
           echo "Waiting for Triton Server to become ready..."
@@ -79,3 +86,16 @@ jobs:
         run: |
           docker compose ps
           docker compose logs --tail=100
+      
+      
+      - name: Run Cyclotron Multi-Factor Unit Tests
+        run: |
+          python -m pytest watcher/tests/test_multi_factor.py -v
+
+      - name: Run E2E Integration Suite
+        env:
+          MODBUS_HOST: "localhost"
+          MODBUS_PORT: "5020"
+        run: |
+          python scripts/test_e2e_containerized.py
+          

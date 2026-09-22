@@ -149,6 +149,23 @@ def verify_e2e_stack():
         mqtt_client.loop_stop()
         mqtt_client.disconnect()
 
+def check_cyclotron_multi_stream_pipeline():
+    """Validates multi-factor vector schema and rule evaluation within E2E harness."""
+    from watcher.schemas.vector_schema import VectorPayload, VectorSourceType, SpatialEntity
+    from watcher.rules.multi_factor_engine import MultiFactorRuleEngine
 
+    engine = MultiFactorRuleEngine("config/watcher_multi_factor_rules.yaml")
+    vec = VectorPayload(
+        vector_id="e2e_test_vec",
+        source_type=VectorSourceType.CAMERA_STREAM,
+        source_id="cam_e2e",
+        hazard_score=0.90,
+        entities=[SpatialEntity(label="person", confidence=0.88, class_id=0)]
+    )
+    
+    actions = engine.evaluate_vector(vec)
+    assert len(actions) == 1, "E2E Multi-factor rule evaluation failed!"
+    print("[E2E SUCCESS] Cyclotron Multi-Stream pipeline check passed.")
+    
 if __name__ == "__main__":
     verify_e2e_stack()
