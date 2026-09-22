@@ -1,6 +1,17 @@
 import os
-import onnx
-from onnx import helper, TensorProto
+import sys
+import subprocess
+
+# Auto-install onnx if missing in CI runner environment
+try:
+    import onnx
+    from onnx import helper, TensorProto
+except ImportError:
+    print("[!] 'onnx' library not found. Installing via pip...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "onnx"])
+    import onnx
+    from onnx import helper, TensorProto
+
 
 def main():
     os.makedirs("model_repository/vector_vision_general_v1/1", exist_ok=True)
@@ -32,6 +43,7 @@ def main():
     m_hazard = helper.make_model(g_hazard, producer_name="ccvnn_ci")
     onnx.save(m_hazard, "model_repository/ccvnn_hazard_v17/1/model.onnx")
     print("[✓] Generated ccvnn_hazard_v17 model.onnx")
+
 
 if __name__ == "__main__":
     main()
