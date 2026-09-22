@@ -47,7 +47,15 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt "pymodbus==2.5.3" pytest
+          pip install \
+          "tritonclient[grpc]" \
+          numpy \
+          opencv-python-headless \
+          paho-mqtt \
+          "pymodbus==3.7.4" \
+          pytest
+
+python -c "from pymodbus.client import ModbusTcpClient; import pymodbus; print('PyModbus', pymodbus.__version__)"
 
       - name: Validate Dashboard JSON Syntax
         run: |
