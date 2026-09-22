@@ -1,0 +1,67 @@
+name: "cyclotron_ensemble"
+platform: "ensemble"
+max_batch_size: 16
+
+input [
+  {
+    name: "telemetry_tensor"
+    data_type: TYPE_FP32
+    dims: [ 4 ]
+  },
+  {
+    name: "camera_frame_tensor"
+    data_type: TYPE_FP32
+    dims: [ 3, 640, 640 ]
+  }
+]
+
+output [
+  {
+    name: "hazard_probability"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  },
+  {
+    name: "detection_boxes"
+    data_type: TYPE_FP32
+    dims: [ 100, 4 ]
+  },
+  {
+    name: "detection_classes"
+    data_type: TYPE_INT32
+    dims: [ 100 ]
+  }
+]
+
+ensemble_scheduling {
+  step [
+    {
+      model_name: "ccvnn_hazard_v17"
+      model_version: -1
+      input_map {
+        key: "input_telemetry"
+        value: "telemetry_tensor"
+      }
+      output_map {
+        key: "output_hazard"
+        value: "hazard_probability"
+      }
+    },
+    {
+      model_name: "vector_vision_general_v1"
+      model_version: -1
+      input_map {
+        key: "images"
+        value: "camera_frame_tensor"
+      }
+      output_map {
+        key: "detection_boxes"
+        value: "detection_boxes"
+      }
+      output_map {
+        key: "detection_classes"
+        value: "detection_classes"
+      }
+    }
+  ]
+}

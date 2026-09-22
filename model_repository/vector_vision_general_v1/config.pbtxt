@@ -1,0 +1,47 @@
+name: "vector_vision_general_v1"
+platform: "onnxruntime_onnx"
+max_batch_size: 16
+
+input [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    format: FORMAT_NCHW
+    dims: [ 3, 640, 640 ]
+  }
+]
+
+output [
+  {
+    name: "num_detections"
+    data_type: TYPE_INT32
+    dims: [ 1 ]
+  },
+  {
+    name: "detection_boxes"
+    data_type: TYPE_FP32
+    dims: [ 100, 4 ]
+  },
+  {
+    name: "detection_scores"
+    data_type: TYPE_FP32
+    dims: [ 100 ]
+  },
+  {
+    name: "detection_classes"
+    data_type: TYPE_INT32
+    dims: [ 100 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 4, 8, 16 ]
+  max_queue_delay_microseconds: 5000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]

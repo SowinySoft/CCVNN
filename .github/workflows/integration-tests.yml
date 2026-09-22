@@ -79,3 +79,16 @@ jobs:
         run: |
           docker compose ps
           docker compose logs --tail=100
+      
+      
+      - name: Run Cyclotron Multi-Factor Unit Tests
+        run: |
+          python -m pytest watcher/tests/test_multi_factor.py -v
+
+      - name: Run E2E Integration Suite
+        env:
+          MODBUS_HOST: "localhost"
+          MODBUS_PORT: "5020"
+        run: |
+          python scripts/test_e2e_containerized.py
+          
