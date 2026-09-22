@@ -1,5 +1,5 @@
 services:
-plc-sim:
+  plc-sim:
     build:
       context: .
       dockerfile: docker/Dockerfile.plc
