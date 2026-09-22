@@ -1,10 +1,10 @@
 services:
   # 1. Edge PLC Simulator (v14/v17 Industrial Safety Actuation)
   plc-sim:
-    image: ghcr.io/sowinysoft/ccvnn-plc-sim:latest
-    #build:
-      #context: .
-      #dockerfile: docker/Dockerfile.plc
+    #image: ghcr.io/sowinysoft/ccvnn-plc-sim:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.plc
     container_name: ccvnn-plc-sim
     restart: unless-stopped
     environment:
@@ -111,10 +111,10 @@ services:
 
   # 5. Watcher Governor & Edge Integration Service
   watcher-engine:
-    image: nvcr.io/nvidia/tritonserver:26.08-py3
-    #build:
-      #context: .
-      #dockerfile: docker/Dockerfile.watcher
+    #image: nvcr.io/nvidia/tritonserver:26.08-py3
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.watcher
     container_name: ccvnn-watcher-engine
     restart: unless-stopped
     depends_on:
