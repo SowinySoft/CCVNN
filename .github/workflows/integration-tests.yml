@@ -49,6 +49,10 @@ jobs:
       - name: Start Docker Services
         run: docker compose up -d --build
 
+      - name: Generate Dummy Triton Vision Models
+        run: |
+          python scripts/generate_dummy_vision_model.py
+      
       - name: Wait for Triton Server Readiness
         run: |
           echo "Waiting for Triton Server to become ready..."

@@ -169,6 +169,24 @@ def run():
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
     client.loop_forever()
 
+# Insert into watcher/daemon.py loop
+from watcher.ingestion.buffer import MultiVectorIngestionBuffer
+from watcher.rules.multi_factor_engine import MultiFactorRuleEngine
 
+# Initialize within WatcherDaemon
+self.buffer = MultiVectorIngestionBuffer(max_capacity=1000)
+self.rule_engine = MultiFactorRuleEngine()
+
+async def process_cycle(self):
+    batch = await self.buffer.get_batch()
+    if not batch:
+        return
+
+    for vector in batch.vectors:
+        actions = self.rule_engine.evaluate_vector(vector)
+        for act in actions:
+            await self.execute_action(act)
+            
+            
 if __name__ == "__main__":
     run()
