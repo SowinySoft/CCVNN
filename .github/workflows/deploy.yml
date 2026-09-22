@@ -56,8 +56,8 @@ jobs:
 
       - name: Start Services via Docker Compose
         run: |
-          docker compose up -d triton-server plc-sim mqtt-broker
-      
+          docker compose up -d --build triton-server plc-sim mqtt-broker
+
       - name: Wait for Triton, MQTT & PLC Services Readiness
         run: |
           for i in {1..30}; do
@@ -68,7 +68,7 @@ jobs:
             MQTT_READY=false
             PLC_READY=false
 
-            if [ "$HTTP_STATUS" = "200" ] &&
+            if [ "$HTTP_STATUS" = "200" ] && \
                (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
               TRITON_READY=true
             fi
@@ -78,24 +78,24 @@ jobs:
             fi
 
             if python3 - <<'PY'
-      from pymodbus.client import ModbusTcpClient
+from pymodbus.client import ModbusTcpClient
 
-      client = ModbusTcpClient("127.0.0.1", port=5020, timeout=2)
-      try:
-          if not client.connect():
-              raise SystemExit(1)
+client = ModbusTcpClient("127.0.0.1", port=5020, timeout=2)
+try:
+    if not client.connect():
+        raise SystemExit(1)
 
-          response = client.read_holding_registers(address=0, count=1, slave=1)
-          raise SystemExit(0 if response is not None and not response.isError() else 1)
-      finally:
-          client.close()
-      PY
+    response = client.read_holding_registers(address=0, count=1, slave=1)
+    raise SystemExit(0 if response is not None and not response.isError() else 1)
+finally:
+    client.close()
+PY
             then
               PLC_READY=true
             fi
 
-            if [ "$TRITON_READY" = true ] &&
-               [ "$MQTT_READY" = true ] &&
+            if [ "$TRITON_READY" = true ] && \
+               [ "$MQTT_READY" = true ] && \
                [ "$PLC_READY" = true ]; then
               echo "All services are ready."
               exit 0

@@ -14,8 +14,10 @@ PLC_PORT = int(os.getenv("PLC_PORT", 5020))
 PLC_SLAVE_ID = int(os.getenv("PLC_SLAVE_ID", 1))
 
 
-def safe_write_register(client, address, values, slave_id=1, attempts=5):
+def safe_write_register(client, address, values, slave_id=PLC_SLAVE_ID, attempts=5):
     last_result = None
+    if isinstance(values, int):
+        values = [values]
 
     for attempt in range(attempts):
         try:
@@ -30,7 +32,7 @@ def safe_write_register(client, address, values, slave_id=1, attempts=5):
             last_result = result
 
             if not result.isError():
-                return result, client, slave_id
+                return result, address, slave_id
 
         except Exception as exc:
             last_result = exc
@@ -45,10 +47,11 @@ def safe_write_register(client, address, values, slave_id=1, attempts=5):
         time.sleep(1 + attempt)
 
     raise AssertionError(
-        f"Unable to write registers {values} using slave ID {slave_id}. "
+        f"Unable to write registers {values} to address {address} using slave ID {slave_id}. "
         f"Last Modbus result: {last_result!r}"
     )
-    
+
+
 def read_holding_registers(client, address, count):
     response = client.read_holding_registers(
         address=address,
@@ -63,6 +66,7 @@ def read_holding_registers(client, address, count):
         )
 
     return response
+
 
 def verify_e2e_stack():
     logger.info("--- Starting V14 Cumulative Vector Vision Containerized E2E Pipeline Verification ---")
@@ -110,31 +114,25 @@ def verify_e2e_stack():
     active_addr = None
     active_slave = None
     try:
-        write_res = None
         target_addresses = [0, 1]
 
-        for attempt in range(5):
-            if attempt:
-                plc_client.close()
-                time.sleep(1)
-                assert plc_client.connect(), f"PLC reconnect failed on attempt {attempt + 1}"
-
+        for addr in target_addresses:
             try:
                 write_res, active_addr, active_slave = safe_write_register(
                     plc_client,
-                    [0, 1],
-                    1,
+                    address=addr,
+                    values=[1],
+                    slave_id=PLC_SLAVE_ID,
                 )
                 rr = read_holding_registers(plc_client, active_addr, count=1)
                 assert rr.registers[0] == 1
                 break
-            except Exception:
-                if attempt == 4:
-                    raise
+            except Exception as e:
+                if addr == target_addresses[-1]:
+                    raise AssertionError(f"PLC Modbus verification failed on all target addresses: {e}")
                 plc_client.close()
                 time.sleep(1)
-        else:
-            raise AssertionError("PLC Modbus verification failed after 5 attempts")
+
         logger.info(f"✓ Modbus Register read/write verified (Address: {active_addr}, Slave ID: {active_slave}).")
 
     finally:

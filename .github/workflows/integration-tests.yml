@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   test-pipeline:
     runs-on: ubuntu-latest
@@ -29,7 +33,7 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
@@ -42,7 +46,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Start Docker services
+      - name: Start Docker Services
         run: docker compose up -d --build
 
       - name: Wait for Triton Server Readiness
@@ -57,7 +61,7 @@ jobs:
           '
           echo "Triton Server is READY!"
 
-      - name: Verify service health
+      - name: Verify Service Health
         run: |
           docker compose ps
 
@@ -65,7 +69,7 @@ jobs:
         env:
           PLC_SLAVE_ID: "1"
         run: python3 scripts/test_e2e_containerized.py
-        
+
       - name: Run Watcher Unit & Integration Tests
         run: |
           PYTHONPATH=. pytest watcher/tests/
