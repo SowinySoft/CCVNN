@@ -1,0 +1,52 @@
+Cyclotron_Cumluative_Vector Roadmap.
+
+Here is the action plan and progress tracking roadmap for **Discussion #9: Multi-Functions Vector Vision Neural Network Platform**.
+
+---
+
+### Step 1: Branch Creation & Isolation
+
+To keep our clean, verified `main` branch protected, execute the following commands in your WSL terminal to initialize and push the new isolated feature branch:
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b Cyclotron_Cumluative_Vector
+git push -u origin Cyclotron_Cumluative_Vector
+
+```
+
+---
+
+### Phase Roadmap & Task TODO Register
+
+#### Phase 1: Multi-Modal Ingestion & Pipeline Architecture
+
+* [ ] **1.1 Tensor Schema Extension:** Define unified input tensor contracts in Python/C++ to support concurrent high-resolution multi-camera feeds alongside Modbus PLC telemetry streams.
+* [ ] **1.2 Multi-Image Ingestion Buffer:** Implement zero-copy image preprocessing queues inside `watcher-engine` for multi-frame vector alignment.
+* [ ] **1.3 Edge Frame Aggregator:** Build dynamic batching and frame-synchronization mechanisms for multi-entity entity detection.
+
+#### Phase 2: Triton Model Repository & Dynamic Routing
+
+* [ ] **2.1 Ensemble Repository Structure:** Re-architect `model_repository/` to support ensemble pipelines (e.g., `ccvnn_hazard_v17` + `vector_vision_general_v1`).
+* [ ] **2.2 Model Configuration Tuning:** Draft `config.pbtxt` definitions with dynamic batching (`max_queue_delay_microseconds`), GPU/CPU instance groups, and decoupled streaming responses.
+* [ ] **2.3 Multi-Model Orchestration:** Configure Triton model control mode (`--model-control-mode=poll` or `explicit`) for hot-swapping specialized vision models without microservice downtime.
+
+#### Phase 3: Watcher Governor & Rules Engine Upgrade
+
+* [ ] **3.1 Multi-Factor Decision Matrix:** Extend `watcher/daemon.py` to process concurrent vector inputs (Hazard Classification + General Entity Spatial Bounding).
+* [ ] **3.2 Dynamic Rule Configuration:** Expand YAML configuration (`config/watcher_multi_factor_rules.yaml`) to map multi-image spatial queries to PLC actuators and MQTT alert channels.
+* [ ] **3.3 Telemetry & DB Persistence:** Update `ccvnn-db` (TimescaleDB) schemas to log multi-entity detection metadata alongside industrial hazard events.
+
+#### Phase 4: E2E Pipeline & Integration Test Suite
+
+* [ ] **4.1 Multi-Stream Synthetic Client:** Create `scripts/triton_client_multi_stream.py` to simulate multi-camera feed ingestion alongside Modbus PLC registers.
+* [ ] **4.2 Expanded E2E Containerized Test:** Update `scripts/test_e2e_containerized.py` to assert concurrent inference pass rates and multi-topic MQTT messaging.
+* [ ] **4.3 Multi-Task Unit Tests:** Add test suites under `watcher/tests/test_multi_factor.py` covering multi-vector aggregation logic.
+
+#### Phase 5: CI/CD Workflows & Latency SLA Gate
+
+* [ ] **5.1 Workflow Alignment:** Update `.github/workflows/deploy.yml` and `integration-tests.yml` to download/mock multi-function model artifacts during GitHub Actions runs.
+* [ ] **5.2 Multi-Factor SLA Benchmarking:** Extend `scripts/check_latency_gate.py` to enforce latency boundaries under dual-stream execution (Hazard + General Vision).
+
+---
