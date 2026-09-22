@@ -1,33 +1,33 @@
 services:
   # 1. Edge PLC Simulator (v14/v17 Industrial Safety Actuation)
-  plc-sim:
-    #image: ghcr.io/sowinysoft/ccvnn-plc-sim:latest
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.plc
-    container_name: ccvnn-plc-sim
-    restart: unless-stopped
-    environment:
-      - PLC_PORT=5020
-      - PYTHONPATH=/app
-    command:
-      - python3
-      - -m
-      - watcher.simulators.modbus_server
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5020"
-    ports:
-      - "5020:5020"
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 5020), 2); s.close()\""]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    networks:
-      - ccvnn-net
+    plc-sim:
+        build:
+          context: .
+          dockerfile: docker/Dockerfile.plc
+        container_name: ccvnn-plc-sim
+        restart: unless-stopped
+        environment:
+          - PLC_PORT=5020
+          - PYTHONPATH=/app
+        working_dir: /app
+        command:
+          - python3
+          - -m
+          - watcher.simulators.modbus_server
+          - --host
+          - 0.0.0.0
+          - --port
+          - "5020"
+        ports:
+          - "5020:5020"
+        healthcheck:
+          test: ["CMD", "python3", "-c", "import urllib.request; import socket; s = socket.socket(); s.connect(('localhost', 5020)); s.close()"]
+          interval: 3s
+          timeout: 2s
+          retries: 15
+          start_period: 5s
+        networks:
+          - ccvnn-net
 
   # 2. MQTT Broker (v14/v17 Hazard Event Messaging)
   mqtt-broker:
