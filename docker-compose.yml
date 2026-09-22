@@ -19,7 +19,6 @@ services:
       - "5020"
     ports:
       - "5020:5020"
-    restart: "no"
     healthcheck:
       test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.connect(('127.0.0.1', 5020)); s.close()"]
       #test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', 5020)); s.close()"]
