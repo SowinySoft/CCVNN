@@ -2,7 +2,6 @@ import os
 import sys
 import subprocess
 
-# Auto-install onnx if missing in CI runner environment
 try:
     import onnx
     from onnx import helper, TensorProto
@@ -22,11 +21,18 @@ def create_hazard_model():
 
     node = helper.make_node("ReduceMean", inputs=["input_telemetry"], outputs=["output_hazard"], axes=[1], keepdims=1)
     graph = helper.make_graph([node], "hazard_model", [input_telemetry], [output_hazard])
-    model = helper.make_model(graph, producer_name="ccvnn")
+    
+    # Force IR Version 13 and Opset 13 for Triton ONNX Runtime compatibility
+    model = helper.make_model(
+        graph, 
+        producer_name="ccvnn", 
+        ir_version=13,
+        opset_imports=[helper.make_operatorsetid("", 13)]
+    )
     
     path = os.path.join(target_dir, "model.onnx")
     onnx.save(model, path)
-    print(f"[✓] Generated {path}")
+    print(f"[✓] Generated {path} (IR Version 13)")
 
 
 def create_vision_model():
@@ -50,11 +56,18 @@ def create_vision_model():
         [images],
         [num_detections, detection_boxes, detection_scores, detection_classes],
     )
-    model = helper.make_model(graph, producer_name="ccvnn")
+    
+    # Force IR Version 13 and Opset 13 for Triton ONNX Runtime compatibility
+    model = helper.make_model(
+        graph, 
+        producer_name="ccvnn", 
+        ir_version=13,
+        opset_imports=[helper.make_operatorsetid("", 13)]
+    )
 
     path = os.path.join(target_dir, "model.onnx")
     onnx.save(model, path)
-    print(f"[✓] Generated {path}")
+    print(f"[✓] Generated {path} (IR Version 13)")
 
 
 if __name__ == "__main__":
