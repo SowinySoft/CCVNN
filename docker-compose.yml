@@ -19,8 +19,10 @@ services:
       - "5020"
     ports:
       - "5020:5020"
+    
     healthcheck:
-      test: ["CMD", "python3", "-c", "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect(('127.0.0.1', 5020)); s.close()"]
+      #test: ["CMD", "python3", "-c", "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.connect(('127.0.0.1', 5020)); s.close()"]
+      test: ["CMD-SHELL", "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1', 5020), 2); s.close()\""]
       interval: 5s
       timeout: 3s
       retries: 12
