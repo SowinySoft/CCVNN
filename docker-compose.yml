@@ -20,11 +20,11 @@ services:
     ports:
       - "5020:5020"
     healthcheck:
-      test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 5020)); s.close()"]
-      interval: 3s
-      timeout: 2s
-      retries: 15
-      start_period: 5s
+      test: ["CMD", "python3", "-c", "import socket; s = socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', 5020)); s.close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
     networks:
       - ccvnn-net
       
