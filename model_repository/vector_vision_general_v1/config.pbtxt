@@ -6,7 +6,6 @@ input [
   {
     name: "images"
     data_type: TYPE_FP32
-    format: FORMAT_NCHW
     dims: [ 3, 640, 640 ]
   }
 ]
@@ -33,11 +32,6 @@ output [
     dims: [ 100 ]
   }
 ]
-
-dynamic_batching {
-  preferred_batch_size: [ 4, 8, 16 ]
-  max_queue_delay_microseconds: 5000
-}
 
 instance_group [
   {
