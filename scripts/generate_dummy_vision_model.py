@@ -6,7 +6,6 @@ try:
     import onnx
     from onnx import helper, TensorProto
 except ImportError:
-    print("[!] 'onnx' library not found. Installing via pip...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", "onnx"])
     import onnx
     from onnx import helper, TensorProto
@@ -22,7 +21,6 @@ def create_hazard_model():
     node = helper.make_node("ReduceMean", inputs=["input_telemetry"], outputs=["output_hazard"], axes=[1], keepdims=1)
     graph = helper.make_graph([node], "hazard_model", [input_telemetry], [output_hazard])
     
-    # Force IR Version 13 and Opset 13 for Triton ONNX Runtime compatibility
     model = helper.make_model(
         graph, 
         producer_name="ccvnn", 
@@ -32,7 +30,7 @@ def create_hazard_model():
     
     path = os.path.join(target_dir, "model.onnx")
     onnx.save(model, path)
-    print(f"[✓] Generated {path} (IR Version 13)")
+    print(f"[✓] Generated {path} (READY)")
 
 
 def create_vision_model():
@@ -40,24 +38,44 @@ def create_vision_model():
     os.makedirs(target_dir, exist_ok=True)
 
     images = helper.make_tensor_value_info("images", TensorProto.FLOAT, ["batch", 3, 640, 640])
+    
     num_detections = helper.make_tensor_value_info("num_detections", TensorProto.INT32, ["batch", 1])
     detection_boxes = helper.make_tensor_value_info("detection_boxes", TensorProto.FLOAT, ["batch", 100, 4])
     detection_scores = helper.make_tensor_value_info("detection_scores", TensorProto.FLOAT, ["batch", 100])
     detection_classes = helper.make_tensor_value_info("detection_classes", TensorProto.INT32, ["batch", 100])
 
-    n1 = helper.make_node("Constant", inputs=[], outputs=["num_detections"], value=helper.make_tensor("c1", TensorProto.INT32, [1, 1], [0]))
-    n2 = helper.make_node("Constant", inputs=[], outputs=["detection_boxes"], value=helper.make_tensor("c2", TensorProto.FLOAT, [1, 100, 4], [0.0] * 400))
-    n3 = helper.make_node("Constant", inputs=[], outputs=["detection_scores"], value=helper.make_tensor("c3", TensorProto.FLOAT, [1, 100], [0.0] * 100))
-    n4 = helper.make_node("Constant", inputs=[], outputs=["detection_classes"], value=helper.make_tensor("c4", TensorProto.INT32, [1, 100], [0] * 100))
+    # Derive outputs from images tensor to preserve dynamic batch dimension (-1)
+    n_reduce = helper.make_node("ReduceMean", inputs=["images"], outputs=["img_mean"], axes=[1, 2, 3], keepdims=1)
+
+    c_shape_2d = helper.make_node("Constant", inputs=[], outputs=["shape_2d"], value=helper.make_tensor("s2d", TensorProto.INT64, [2], [-1, 1]))
+    n_num_float = helper.make_node("Reshape", inputs=["img_mean", "shape_2d"], outputs=["num_float"])
+    n_num_det = helper.make_node("Cast", inputs=["num_float"], outputs=["num_detections"], to=TensorProto.INT32)
+
+    c_shape_scores = helper.make_node("Constant", inputs=[], outputs=["shape_scores"], value=helper.make_tensor("ss", TensorProto.INT64, [2], [1, 100]))
+    n_scores_exp = helper.make_node("Expand", inputs=["num_float", "shape_scores"], outputs=["detection_scores"])
+
+    c_shape_3d = helper.make_node("Constant", inputs=[], outputs=["shape_3d"], value=helper.make_tensor("s3d", TensorProto.INT64, [3], [-1, 1, 1]))
+    n_reshape_3d = helper.make_node("Reshape", inputs=["img_mean", "shape_3d"], outputs=["img_3d"])
+    c_shape_boxes = helper.make_node("Constant", inputs=[], outputs=["shape_boxes"], value=helper.make_tensor("sb", TensorProto.INT64, [3], [1, 100, 4]))
+    n_boxes_exp = helper.make_node("Expand", inputs=["img_3d", "shape_boxes"], outputs=["detection_boxes"])
+
+    n_classes = helper.make_node("Cast", inputs=["detection_scores"], outputs=["detection_classes"], to=TensorProto.INT32)
+
+    nodes = [
+        n_reduce,
+        c_shape_2d, n_num_float, n_num_det,
+        c_shape_scores, n_scores_exp,
+        c_shape_3d, n_reshape_3d, c_shape_boxes, n_boxes_exp,
+        n_classes
+    ]
 
     graph = helper.make_graph(
-        [n1, n2, n3, n4],
+        nodes,
         "vision_model",
         [images],
         [num_detections, detection_boxes, detection_scores, detection_classes],
     )
-    
-    # Force IR Version 13 and Opset 13 for Triton ONNX Runtime compatibility
+
     model = helper.make_model(
         graph, 
         producer_name="ccvnn", 
@@ -67,7 +85,7 @@ def create_vision_model():
 
     path = os.path.join(target_dir, "model.onnx")
     onnx.save(model, path)
-    print(f"[✓] Generated {path} (IR Version 13)")
+    print(f"[✓] Generated {path} (Dynamic Batching Compatible)")
 
 
 if __name__ == "__main__":
