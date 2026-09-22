@@ -143,6 +143,7 @@ services:
       - DB_PASS=postgrespassword
       - DB_PATH=/app/data/watcher_buffer.db
       - CONFIG_PATH=config/watcher_stress_test_rules.yaml
+      #- CONFIG_PATH=configs/watcher_stress_test_rules.yaml
       - PYTHONPATH=/app
     command: python watcher/daemon.py
     volumes:
