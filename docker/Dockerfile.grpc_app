@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy isolated requirements file
+COPY docker/requirements.grpc.txt ./requirements.txt
+
+# Fast installation using pre-compiled binaries and BuildKit cache
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefer-binary -r requirements.txt
+
+# Copy application script
+COPY grpc_app.py .
+
+EXPOSE 8080
+
+CMD ["uvicorn", "grpc_app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4", "--loop", "uvloop"]

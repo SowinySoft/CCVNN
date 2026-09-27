@@ -19,8 +19,12 @@ dims: [ 1 ]
 ]
 
 instance_group [
-{
-count: 1
-kind: KIND_CPU
-}
+  {
+    count: 1
+    kind: KIND_CPU
+  }
 ]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 10000
+}

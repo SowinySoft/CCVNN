@@ -1,75 +1,138 @@
+# async_benchmark.py
+import argparse
 import asyncio
+import json
 import time
 import numpy as np
 import tritonclient.grpc.aio as grpcclient
+from tritonclient.utils import InferenceServerException
 
-TRITON_URL = "localhost:8001"
-MODEL_NAME = "ccvnn_v14_model_b"
-CONCURRENCY = 8          # Number of concurrent client tasks
-TOTAL_REQUESTS = 1000    # Total requests distributed across workers
-BATCH_SIZE = 1
-FEATURE_DIM = 14
 
-async def worker(client, reqs_per_worker, latencies, triton_input, triton_output):
-    for _ in range(reqs_per_worker):
-        t_start = time.perf_counter()
-        await client.infer(
-            model_name=MODEL_NAME,
-            inputs=[triton_input],
-            outputs=[triton_output]
-        )
-        t_end = time.perf_counter()
-        latencies.append((t_end - t_start) * 1000.0)
+async def benchmark_concurrency(
+    client: grpcclient.InferenceServerClient,
+    model_name: str,
+    total_requests: int,
+    concurrency: int,
+) -> dict:
+    """Runs an asynchronous benchmark for a specific concurrency level."""
+    # Infer input details from Triton metadata
+    metadata = await client.get_model_metadata(model_name)
+    inputs = []
+    for inp in metadata.inputs:
+        shape = [dim if dim > 0 else 1 for dim in inp.shape]
+        dtype = inp.datatype
+        if "INT" in dtype:
+            data = np.ones(shape, dtype=np.int32)
+        elif "FP16" in dtype:
+            data = np.ones(shape, dtype=np.float16)
+        else:
+            data = np.ones(shape, dtype=np.float32)
 
-async def main():
-    client = grpcclient.InferenceServerClient(url=TRITON_URL)
+        infer_input = grpcclient.InferInput(inp.name, shape, dtype)
+        infer_input.set_data_from_numpy(data)
+        inputs.append(infer_input)
 
-    if not await client.is_model_ready(MODEL_NAME):
-        raise RuntimeError(f"Model '{MODEL_NAME}' is not ready on Triton gRPC server.")
-
-    # Prepare input payload matching [-1, 14] shape
-    dummy_input = np.random.randn(BATCH_SIZE, FEATURE_DIM).astype(np.float32)
-    triton_input = grpcclient.InferInput("input_vector", list(dummy_input.shape), "FP32")
-    triton_input.set_data_from_numpy(dummy_input)
-    triton_output = grpcclient.InferRequestedOutput("output_prediction")
-
-    # Warmup runs
-    print("Executing 50 warmup requests...")
-    for _ in range(50):
-        await client.infer(model_name=MODEL_NAME, inputs=[triton_input], outputs=[triton_output])
-
-    print(f"Benchmarking {TOTAL_REQUESTS} requests across {CONCURRENCY} concurrent workers...")
+    queue = asyncio.Queue()
+    for _ in range(total_requests):
+        queue.put_nowait(True)
 
     latencies = []
-    reqs_per_worker = TOTAL_REQUESTS // CONCURRENCY
+    lock = asyncio.Lock()
 
-    tasks = [
-        worker(client, reqs_per_worker, latencies, triton_input, triton_output)
-        for _ in range(CONCURRENCY)
-    ]
+    async def worker():
+        while True:
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
 
-    t_start_total = time.perf_counter()
-    await asyncio.gather(*tasks)
-    t_end_total = time.perf_counter()
+            start_time = time.perf_counter()
+            try:
+                await client.infer(model_name=model_name, inputs=inputs)
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+                async with lock:
+                    latencies.append(latency_ms)
+            except InferenceServerException as e:
+                print(f"Inference error: {e}")
+            finally:
+                queue.task_done()
 
-    total_duration = t_end_total - t_start_total
-    actual_requests = reqs_per_worker * CONCURRENCY
-    throughput = actual_requests / total_duration
-    lat = np.array(latencies)
+    # Warmup
+    warmup_inputs = inputs
+    for _ in range(10):
+        await client.infer(model_name=model_name, inputs=warmup_inputs)
 
-    print("\n================ ASYNC gRPC BENCHMARK RESULTS ================")
-    print(f"Concurrency Level:       {CONCURRENCY} worker tasks")
-    print(f"Total Requests Processed:{actual_requests}")
-    print(f"Total Elapsed Time:      {total_duration:.4f} sec")
-    print(f"Throughput:              {throughput:.2f} infer/sec")
-    print(f"Mean Latency:            {np.mean(lat):.3f} ms")
-    print(f"P50 Latency (Median):    {np.percentile(lat, 50):.3f} ms")
-    print(f"P90 Latency:             {np.percentile(lat, 90):.3f} ms")
-    print(f"P99 Latency:             {np.percentile(lat, 99):.3f} ms")
-    print(f"Min / Max Latency:       {np.min(lat):.3f} ms / {np.max(lat):.3f} ms")
-    print("==============================================================")
+    start_bench = time.perf_counter()
+    workers = [asyncio.create_task(worker()) for _ in range(concurrency)]
+    await asyncio.gather(*workers)
+    total_time = time.perf_counter() - start_bench
 
-    await client.close()
+    latencies_arr = np.array(latencies)
+    throughput = len(latencies) / total_time if total_time > 0 else 0.0
+
+    return {
+        "concurrency": concurrency,
+        "total_requests": len(latencies),
+        "total_time_sec": total_time,
+        "throughput_fps": throughput,
+        "mean_latency_ms": float(np.mean(latencies_arr)),
+        "p50_latency_ms": float(np.percentile(latencies_arr, 50)),
+        "p90_latency_ms": float(np.percentile(latencies_arr, 90)),
+        "p95_latency_ms": float(np.percentile(latencies_arr, 95)),
+        "p99_latency_ms": float(np.percentile(latencies_arr, 99)),
+        "min_latency_ms": float(np.min(latencies_arr)),
+        "max_latency_ms": float(np.max(latencies_arr)),
+        "latencies_raw": latencies_arr.tolist(),
+    }
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Triton Async gRPC Benchmark Suite")
+    parser.add_argument("--url", type=str, default="127.0.0.1:8001", help="Triton gRPC endpoint")
+    parser.add_argument("--model", type=str, default="cyclotron_ensemble", help="Target model name")
+    parser.add_argument("--requests", type=int, default=1000, help="Total requests per run")
+    parser.add_argument(
+        "--concurrency-list",
+        type=str,
+        default="1,2,4,8,16,32",
+        help="Comma-separated list of worker concurrencies",
+    )
+    parser.add_argument("--output", type=str, default="benchmark_results.json", help="Output JSON file path")
+    args = parser.parse_args()
+
+    client = grpcclient.InferenceServerClient(url=args.url)
+
+    if not await client.is_model_ready(args.model):
+        raise RuntimeError(f"Model '{args.model}' is not ready on Triton gRPC server at {args.url}")
+
+    concurrencies = [int(c.strip()) for c in args.concurrency_list.split(",")]
+    all_results = {
+        "model_name": args.model,
+        "timestamp": time.time(),
+        "runs": [],
+    }
+
+    print(f"Starting SLA Validation Suite for model '{args.model}' on {args.url}")
+    print("=" * 70)
+
+    for c in concurrencies:
+        print(f"Running concurrency={c} ({args.requests} requests)...")
+        res = await benchmark_concurrency(client, args.model, args.requests, c)
+        all_results["runs"].append(res)
+
+        print(
+            f" -> Throughput: {res['throughput_fps']:.2f} infer/sec | "
+            f"P50: {res['p50_latency_ms']:.2f}ms | "
+            f"P90: {res['p90_latency_ms']:.2f}ms | "
+            f"P99: {res['p99_latency_ms']:.2f}ms"
+        )
+
+    with open(args.output, "w") as f:
+        json.dump(all_results, f, indent=2)
+
+    print("=" * 70)
+    print(f"Benchmark run complete. Results exported to '{args.output}'.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

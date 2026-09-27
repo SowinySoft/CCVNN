@@ -1,4 +1,4 @@
-name: "ccvnn_v17_backbone"
+name: "model_b_acon_cpu"
 backend: "openvino"
 max_batch_size: 16
 
@@ -9,15 +9,15 @@ dynamic_batching {
 
 input [
   {
-    name: "v_input_17"
+    name: "input_vector"
     data_type: TYPE_FP32
-    dims: [ 17 ]
+    dims: [ 14 ]
   }
 ]
 
 output [
   {
-    name: "hazard_prob"
+    name: "output_prediction"
     data_type: TYPE_FP32
     dims: [ 1 ]
   }
@@ -32,3 +32,4 @@ instance_group [
 
 parameters: { key: "NUM_STREAMS" value: { string_value: "1" } }
 parameters: { key: "INFERENCE_NUM_THREADS" value: { string_value: "1" } }
+parameters: { key: "ENABLE_BATCH_PADDING" value: { string_value: "YES" } }

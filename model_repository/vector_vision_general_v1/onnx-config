@@ -35,9 +35,9 @@ output [
 
 dynamic_batching {
   preferred_batch_size: [ 2, 4, 8, 16 ]
-  max_queue_delay_microseconds: 1000
+  max_queue_delay_microseconds: 2000
   default_queue_policy {
-    max_queue_size: 32
+    max_queue_size: 100
     action: REJECT
   }
 }
@@ -45,17 +45,18 @@ dynamic_batching {
 instance_group [
   {
     count: 2
-    kind: KIND_CPU
+    kind: KIND_GPU
+    gpus: [ 0 ]
   }
 ]
 
 optimization {
   execution_accelerators {
-    cpu_execution_accelerator : [
+    gpu_execution_accelerator : [
       {
-        name : "openvino"
-        parameters { key: "device_type" value: "CPU_FP32" }
-        parameters { key: "num_of_threads" value: "4" }
+        name : "onnxruntime"
+        parameters { key: "device_id" value: "0" }
+        parameters { key: "execution_mode" value: "ORT_SEQUENTIAL" }
       }
     ]
   }

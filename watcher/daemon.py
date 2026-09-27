@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -6,6 +7,9 @@ import time
 import paho.mqtt.client as mqtt
 import psycopg2
 from pymodbus.client import ModbusTcpClient
+
+from watcher.ingestion.buffer import MultiVectorIngestionBuffer
+from watcher.rules.multi_factor_engine import MultiFactorRuleEngine
 
 # Configure Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -30,12 +34,15 @@ DB_PASS = os.getenv("DB_PASS", "postgrespassword")
 DEBOUNCE_THRESHOLD = 5
 COOLDOWN_SECONDS = 5.0
 
-# State Management
+# State Management & Engine Initialization
 state_lock = threading.Lock()
 consecutive_hazards = 0
 last_hazard_time = 0.0
 hazard_active = False
 mqtt_client_instance = None
+
+buffer = MultiVectorIngestionBuffer(max_capacity=1000)
+rule_engine = MultiFactorRuleEngine()
 
 
 def log_to_database_async(status: str, reasoning: str, plc_value: int):
@@ -154,6 +161,29 @@ def on_message(client, userdata, msg):
         logger.error(f"Failed to process detection payload: {e}")
 
 
+async def execute_action(act):
+    """Executes state transition based on rule evaluation output."""
+    action_type = act.get("type", "NORMAL")
+    reasoning = act.get("reasoning", "Multi-factor rule engine action")
+    handle_state_transition(action_type, reasoning)
+
+
+async def process_cycle():
+    """Asynchronously processes batches from ingestion buffer through multi-factor rules engine."""
+    while True:
+        try:
+            if hasattr(buffer, "get_batch"):
+                batch = await buffer.get_batch()
+                if batch and hasattr(batch, "vectors"):
+                    for vector in batch.vectors:
+                        actions = rule_engine.evaluate_vector(vector)
+                        for act in actions:
+                            await execute_action(act)
+        except Exception as e:
+            logger.error(f"Error in process_cycle: {e}")
+        await asyncio.sleep(0.1)
+
+
 def run():
     global mqtt_client_instance
 
@@ -169,24 +199,6 @@ def run():
     client.connect(MQTT_BROKER, MQTT_PORT, 60)
     client.loop_forever()
 
-# Insert into watcher/daemon.py loop
-from watcher.ingestion.buffer import MultiVectorIngestionBuffer
-from watcher.rules.multi_factor_engine import MultiFactorRuleEngine
 
-# Initialize within WatcherDaemon
-self.buffer = MultiVectorIngestionBuffer(max_capacity=1000)
-self.rule_engine = MultiFactorRuleEngine()
-
-async def process_cycle(self):
-    batch = await self.buffer.get_batch()
-    if not batch:
-        return
-
-    for vector in batch.vectors:
-        actions = self.rule_engine.evaluate_vector(vector)
-        for act in actions:
-            await self.execute_action(act)
-            
-            
 if __name__ == "__main__":
     run()

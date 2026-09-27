@@ -1,0 +1,6 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+uvloop>=0.17.0
+tritonclient[grpc]
+numpy
+pydantic>=2.0

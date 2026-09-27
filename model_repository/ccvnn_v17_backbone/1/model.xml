@@ -1,0 +1,485 @@
+<?xml version="1.0"?>
+<net name="onnx_Frontend_IR" version="11">
+	<layers>
+		<layer id="0" name="v_input_17" type="Parameter" version="opset1">
+			<data shape="?,17" element_type="f32" />
+			<output>
+				<port id="0" precision="FP32" names="v_input_17">
+					<dim>-1</dim>
+					<dim>17</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="1" name="fc1.weight_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="64, 17" offset="0" size="2176" />
+			<output>
+				<port id="0" precision="FP16" names="fc1.weight">
+					<dim>64</dim>
+					<dim>17</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="2" name="fc1.weight" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>64</dim>
+					<dim>17</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>64</dim>
+					<dim>17</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="3" name="node_linear/WithoutBiases" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>17</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>64</dim>
+					<dim>17</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="4" name="Constant_7869_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="1, 64" offset="2176" size="128" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="5" name="Constant_7869" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="6" name="node_linear" type="Add" version="opset1">
+			<data auto_broadcast="numpy" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="linear">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="7" name="n0" type="HSwish" version="opset4">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32" names="hardswish">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="8" name="fc2.weight_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="64, 64" offset="2304" size="8192" />
+			<output>
+				<port id="0" precision="FP16" names="fc2.weight">
+					<dim>64</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="9" name="fc2.weight" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>64</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>64</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="10" name="node_linear_1/WithoutBiases" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>64</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="11" name="Constant_7870_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="1, 64" offset="10496" size="128" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="12" name="Constant_7870" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="13" name="node_linear_1" type="Add" version="opset1">
+			<data auto_broadcast="numpy" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="linear_1">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="14" name="n0_2" type="HSwish" version="opset4">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32" names="hardswish_1">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="15" name="fc3.weight_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="32, 64" offset="10624" size="4096" />
+			<output>
+				<port id="0" precision="FP16" names="fc3.weight">
+					<dim>32</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="16" name="fc3.weight" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>32</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>32</dim>
+					<dim>64</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="17" name="node_linear_2/WithoutBiases" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>64</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>32</dim>
+					<dim>64</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="18" name="Constant_7871_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="1, 32" offset="14720" size="64" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="19" name="Constant_7871" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="20" name="node_linear_2" type="Add" version="opset1">
+			<data auto_broadcast="numpy" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="linear_2">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="21" name="n0_3" type="HSwish" version="opset4">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32" names="hardswish_2">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="22" name="head.weight_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="1, 32" offset="14784" size="64" />
+			<output>
+				<port id="0" precision="FP16" names="head.weight">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="23" name="head.weight" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="24" name="node_linear_3/WithoutBiases" type="MatMul" version="opset1">
+			<data transpose_a="false" transpose_b="true" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>32</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>32</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="25" name="Constant_7872_compressed" type="Const" version="opset1">
+			<data element_type="f16" shape="1, 1" offset="14848" size="2" />
+			<output>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="26" name="Constant_7872" type="Convert" version="opset1">
+			<data destination_type="f32" />
+			<rt_info>
+				<attribute name="decompression" version="0" />
+			</rt_info>
+			<input>
+				<port id="0" precision="FP16">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="27" name="node_linear_3" type="Add" version="opset1">
+			<data auto_broadcast="numpy" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="linear_3">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="28" name="hazard_prob" type="Sigmoid" version="opset1">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+			<output>
+				<port id="1" precision="FP32" names="hazard_prob">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="29" name="hazard_prob/sink_port_0" type="Result" version="opset1" output_names="hazard_prob">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>-1</dim>
+					<dim>1</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="0" from-port="0" to-layer="3" to-port="0" />
+		<edge from-layer="1" from-port="0" to-layer="2" to-port="0" />
+		<edge from-layer="2" from-port="1" to-layer="3" to-port="1" />
+		<edge from-layer="3" from-port="2" to-layer="6" to-port="0" />
+		<edge from-layer="4" from-port="0" to-layer="5" to-port="0" />
+		<edge from-layer="5" from-port="1" to-layer="6" to-port="1" />
+		<edge from-layer="6" from-port="2" to-layer="7" to-port="0" />
+		<edge from-layer="7" from-port="1" to-layer="10" to-port="0" />
+		<edge from-layer="8" from-port="0" to-layer="9" to-port="0" />
+		<edge from-layer="9" from-port="1" to-layer="10" to-port="1" />
+		<edge from-layer="10" from-port="2" to-layer="13" to-port="0" />
+		<edge from-layer="11" from-port="0" to-layer="12" to-port="0" />
+		<edge from-layer="12" from-port="1" to-layer="13" to-port="1" />
+		<edge from-layer="13" from-port="2" to-layer="14" to-port="0" />
+		<edge from-layer="14" from-port="1" to-layer="17" to-port="0" />
+		<edge from-layer="15" from-port="0" to-layer="16" to-port="0" />
+		<edge from-layer="16" from-port="1" to-layer="17" to-port="1" />
+		<edge from-layer="17" from-port="2" to-layer="20" to-port="0" />
+		<edge from-layer="18" from-port="0" to-layer="19" to-port="0" />
+		<edge from-layer="19" from-port="1" to-layer="20" to-port="1" />
+		<edge from-layer="20" from-port="2" to-layer="21" to-port="0" />
+		<edge from-layer="21" from-port="1" to-layer="24" to-port="0" />
+		<edge from-layer="22" from-port="0" to-layer="23" to-port="0" />
+		<edge from-layer="23" from-port="1" to-layer="24" to-port="1" />
+		<edge from-layer="24" from-port="2" to-layer="27" to-port="0" />
+		<edge from-layer="25" from-port="0" to-layer="26" to-port="0" />
+		<edge from-layer="26" from-port="1" to-layer="27" to-port="1" />
+		<edge from-layer="27" from-port="2" to-layer="28" to-port="0" />
+		<edge from-layer="28" from-port="1" to-layer="29" to-port="0" />
+	</edges>
+	<rt_info>
+		<info name="OpenVINO Runtime" value="2026.4.0-22959-99c81491cc3-releases/2026/4" />
+		<Runtime_version value="2026.4.0-22959-99c81491cc3-releases/2026/4" />
+		<conversion_parameters>
+			<input_model value="DIR/ccvnn_v17_backbone.onnx" />
+			<is_python_object value="False" />
+		</conversion_parameters>
+	</rt_info>
+</net>
