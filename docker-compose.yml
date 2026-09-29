@@ -54,7 +54,7 @@ services:
       - ccvnn-net
 
 # 3. Core Triton Inference Server (v12 Baseline + v17 Compatibility)
-  #triton-server:
+  #triton-inference-server:
   #  image: nvcr.io/nvidia/tritonserver:24.08-py3
   #  container_name: tritonserver_prod
   #  restart: unless-stopped
@@ -156,7 +156,7 @@ services:
         condition: service_healthy
       plc-sim:
         condition: service_healthy
-      triton-server:
+      triton-inference-server:
         condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
@@ -166,7 +166,7 @@ services:
       - PLC_IP=plc-sim
       - PLC_HOST=plc-sim
       - PLC_PORT=5020
-      - TRITON_HOST=triton-server
+      - TRITON_HOST=triton-inference-server
       - TRITON_PORT=8001
       - DB_HOST=ccvnn-db
       - DB_PORT=5432
@@ -194,7 +194,7 @@ services:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
     depends_on:
-      triton-server:
+      triton-inference-server:
         condition: service_healthy
     networks:
       - ccvnn-net
@@ -220,13 +220,13 @@ services:
     container_name: ccvnn-grpc-app
     restart: unless-stopped
     depends_on:
-      triton-server:
+      triton-inference-server:
         condition: service_healthy
       ccvnn-db:
         condition: service_healthy
     environment:
       - PYTHONUNBUFFERED=1
-      - TRITON_HOST=triton-server
+      - TRITON_HOST=triton-inference-server
       - TRITON_PORT=8001
       - DB_HOST=ccvnn-db
       - DB_PORT=5432
