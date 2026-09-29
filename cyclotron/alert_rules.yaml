@@ -1,0 +1,50 @@
+#/etc/grafana/provisioning/alerting/alert_rules.yaml
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: CCVNN_Edge_Hardware_Alerts
+    folder: Edge_Monitoring
+    interval: 10s
+    rules:
+      - uid: modbus_conn_failure_rule
+        title: "Persistent Modbus TCP Connection Failure"
+        condition: B
+        for: 1m
+        annotations:
+          summary: "Modbus TCP connection lost on WatcherEdgeDaemon"
+          description: "Health signal V_cum[V6_H_HEALTH] dropped below 0.5 for over 60 seconds. PLC relay control and severity registers are un synchronized."
+          runbook_url: "https://wiki.ccvnn.internal/ops/runbooks/modbus-failure"
+        labels:
+          severity: critical
+          subsystem: hardware_actuation
+          protocol: modbus_tcp
+        data:
+          # Query A: Fetch low-latency mean health over 10s windows
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: influxdb-ccvnn
+            model:
+              query: |
+                from(bucket: "v_cum_metrics")
+                  |> range(start: -5m)
+                  |> filter(fn: (r) => r["_measurement"] == "v_cum_telemetry")
+                  |> filter(fn: (r) => r["_field"] == "v_cum_H_health")
+                  |> aggregateWindow(every: 10s, fn: mean, createEmpty: false)
+                  |> last()
+
+          # Query B: Threshold Evaluator (Triggers if H_health < 0.5)
+          - refId: B
+            queryType: ""
+            datasourceUid: "-100" # Classic Evaluator / Math Expression
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - evaluator:
+                    params: [0.5]
+                    type: lt

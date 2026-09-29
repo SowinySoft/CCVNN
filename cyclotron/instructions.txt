@@ -1,0 +1,9 @@
+docker compose up -d
+
+Grafana URL: http://<EDGE_NODE_IP>:3000 (User: admin, Pass: admin).
+
+Add InfluxDB Data Source: URL http://influxdb:8086, Org ccvnn, Token ccvnn-edge-telemetry-token, Bucket v_cum_metrics.
+
+Import the JSON file directly.
+
+docker compose restart grafana

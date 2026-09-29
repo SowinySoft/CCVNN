@@ -1,0 +1,256 @@
+name: CCVNN Production Suite - Linux Tailscale & Microservices
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      deploy_ccvnn_services:
+        description: 'Spin up CCVNN 8-Service Stack (Triton, gRPC Bridge, Timescale, etc.)'
+        type: boolean
+        required: false
+        default: true
+      target_repo_url:
+        description: 'GitHub repository URL to clone (leave blank for current repo)'
+        required: false
+        default: ''
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  linux-session:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Tailscale on Linux
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
+      - name: Enable Linux Kernel IP Forwarding
+        run: |
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+          echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+          echo "net.ipv6.conf.all.forwarding=1" | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+          sudo sysctl --system
+
+      - name: Pre-Clone Target Repository
+        run: |
+          REPO_URL="${{ github.event.inputs.target_repo_url }}"
+          if [ -z "$REPO_URL" ]; then
+            REPO_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          fi
+          
+          WORKSPACE_DIR="$HOME/ccvnn-workspace"
+          mkdir -p "$WORKSPACE_DIR"
+          cd "$WORKSPACE_DIR"
+          git clone "$REPO_URL" .
+          echo "Repository cloned successfully into $WORKSPACE_DIR"
+
+      - name: Generate & Launch CCVNN 8-Service Microservices Stack
+        if: ${{ github.event.inputs.deploy_ccvnn_services == 'true' }}
+        run: |
+          STACK_DIR="$HOME/ccvnn-stack"
+          mkdir -p "$STACK_DIR"
+          cd "$STACK_DIR"
+
+          cat << 'EOF' > docker-compose.yml
+          version: '3.8'
+
+          networks:
+            ccvnn-net:
+              driver: bridge
+
+          services:
+            # 1. Triton Inference Server (Model Execution Core)
+            triton-inference-server:
+              image: nvcr.io/nvidia/tritonserver:28.06-py3
+              container_name: ccvnn-triton
+              command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true --allow-metrics=true
+              ports:
+                - "8000:8000"
+                - "8001:8001"
+                - "8002:8002"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 2. FastAPI gRPC Bridge Service
+            fastapi-grpc-bridge:
+              image: python:3.11-slim
+              container_name: ccvnn-grpc-bridge
+              command: sh -c "pip install --no-cache-dir fastapi uvicorn grpcio protobuf && uvicorn --host 0.0.0.0 --port 8080"
+              ports:
+                - "8080:8080"
+                - "50051:50051"
+              environment:
+                - TRITON_SERVER_URL=triton-inference-server:8001
+                - TIMESCALE_DB_URL=postgres://postgres:ccvnn_pass@timescaledb:5432/telemetry
+              depends_on:
+                - triton-inference-server
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 3. TimescaleDB (Telemetry & Time-Series Data)
+            timescaledb:
+              image: timescale/timescaledb:latest-pg15
+              container_name: ccvnn-timescaledb
+              environment:
+                - POSTGRES_DB=telemetry
+                - POSTGRES_PASSWORD=ccvnn_pass
+              ports:
+                - "5432:5432"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 4. MQTT Broker (Eclipse Mosquitto Message Bus)
+            mqtt-broker:
+              image: eclipse-mosquitto:2.0
+              container_name: ccvnn-mqtt-broker
+              ports:
+                - "1883:1883"
+                - "9001:9001"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 5. PLC Hardware Simulator
+            plc-hardware-simulator:
+              image: alpine:latest
+              container_name: ccvnn-plc-simulator
+              command: sh -c "apk add --no-cache netcat-openbsd && while true; do echo 'PLC Telemetry Alive' | nc -l -p 502; sleep 1; done"
+              ports:
+                - "502:502"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 6. Dedicated Watcher Engine (Edge & Convergence Governor)
+            watcher-engine:
+              image: python:3.11-slim
+              container_name: ccvnn-watcher-engine
+              command: python -c "import time; print('CCVNN Watcher Governor Active...'); time.sleep(36000)"
+              depends_on:
+                - mqtt-broker
+                - triton-inference-server
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 7. Prometheus Collector
+            prometheus:
+              image: prom/prometheus:latest
+              container_name: ccvnn-prometheus
+              ports:
+                - "9090:9090"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 8. Grafana Dashboard
+            grafana:
+              image: grafana/grafana:latest
+              container_name: ccvnn-grafana
+              ports:
+                - "3000:3000"
+              environment:
+                - GF_SECURITY_ADMIN_PASSWORD=ccvnn_admin
+              depends_on:
+                - prometheus
+              networks:
+                - ccvnn-net
+              restart: always
+          EOF
+
+          echo "Spinning up all 8 CCVNN containerized components..."
+          docker compose up -d
+          sleep 10
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Connect to Tailscale Tailnet
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          if [ -z "$TAILSCALE_AUTHKEY" ]; then
+            echo "Error: TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          fi
+
+          ARGS=(
+            "up"
+            "--authkey=$TAILSCALE_AUTHKEY"
+            "--hostname=github-runner-linux"
+            "--advertise-tags=tag:github-runner"
+            "--accept-routes=true"
+          )
+
+          if [ "${{ github.event.inputs.enable_exit_node }}" = "true" ]; then
+            ARGS+=("--advertise-exit-node")
+          fi
+
+          if [ -n "${{ github.event.inputs.advertise_routes }}" ]; then
+            ARGS+=("--advertise-routes=${{ github.event.inputs.advertise_routes }}")
+          fi
+
+          if [ "${{ github.event.inputs.enable_ssh }}" = "true" ]; then
+            ARGS+=("--ssh")
+          fi
+
+          sudo tailscale "${ARGS[@]}"
+
+      - name: Display Connection & CCVNN Stack Information
+        run: |
+          TAILSCALE_IP=$(tailscale ip -4)
+          
+          echo ""
+          echo "========================================================="
+          echo "    CCVNN LINUX PRODUCTION SUITE & TAILSCALE ACTIVE"
+          echo "========================================================="
+          echo " Node Tailscale IP : $TAILSCALE_IP"
+          echo " Hostname          : github-runner-linux"
+          echo " SSH Access        : ssh runneradmin@$TAILSCALE_IP"
+          echo "---------------------------------------------------------"
+          echo " CCVNN 8-SERVICE STACK ENDPOINTS (via Tailscale mesh):"
+          echo "  1. Triton HTTP API   : http://$TAILSCALE_IP:8000"
+          echo "  2. Triton gRPC API   : $TAILSCALE_IP:8001"
+          echo "  3. FastAPI Bridge    : http://$TAILSCALE_IP:8080"
+          echo "  4. TimescaleDB       : $TAILSCALE_IP:5432"
+          echo "  5. MQTT Broker       : $TAILSCALE_IP:1883"
+          echo "  6. PLC Simulator     : $TAILSCALE_IP:502"
+          echo "  7. Prometheus UI     : http://$TAILSCALE_IP:9090"
+          echo "  8. Grafana Dashboard : http://$TAILSCALE_IP:3000 (admin/ccvnn_admin)"
+          echo "========================================================="
+          echo ""
+
+      - name: Maintain Active Session Loop
+        run: |
+          HOURS="${{ github.event.inputs.session_hours }}"
+          TOTAL_SECONDS=$((HOURS * 3600))
+          ELAPSED=0
+          
+          echo "Session running for $HOURS hour(s). Do not cancel the workflow."
+          while [ $ELAPSED -lt $TOTAL_SECONDS ]; do
+            sleep 60
+            ELAPSED=$((ELAPSED + 60))
+          done
+ #ping 100.68.67.78

@@ -53,38 +53,61 @@ services:
     networks:
       - ccvnn-net
 
-  # 3. Core Triton Inference Server (v12 Baseline + v17 Compatibility)
-  triton-server:
+# 3. Core Triton Inference Server (v12 Baseline + v17 Compatibility)
+  #triton-server:
+  #  image: nvcr.io/nvidia/tritonserver:24.08-py3
+  #  container_name: tritonserver_prod
+  #  restart: unless-stopped
+  #  cap_add:
+  #    - SYS_NICE
+  #  environment:
+  #    - PYTHONUNBUFFERED=1
+  #    # Allow OpenVINO parameters in config.pbtxt (NUM_STREAMS=4, INFERENCE_NUM_THREADS=8) to control threading
+  #    - OMP_WAIT_POLICY=PASSIVE
+  #    - KMP_AFFINITY=granularity=fine,compact,1,0
+  #  volumes:
+  #    - ./model_repository:/models:ro
+  #  ports:
+  #    - "8005:8000"  # HTTP Inference API (Host 8005 -> Container 8000)
+  #    - "8001:8001"  # gRPC Inference API
+  #    - "8002:8002"  # Metrics API
+  #  command:
+  #    - numactl
+  #    - --physcpubind=0-3
+  #    - --membind=0
+  #    - tritonserver
+  #    - --model-repository=/models
+  #    - --model-control-mode=poll
+  #    - --repository-poll-secs=10
+  #    - --strict-model-config=false
+  #    - --allow-grpc=true
+  #    - --allow-http=true
+  #    - --log-verbose=0
+  #    - --exit-on-error=true
+
+  triton_server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
-    container_name: tritonserver_prod
-    restart: unless-stopped
-    command: ["numactl", "--physcpubind=0-3", "--membind=0", "tritonserver", "--model-repository=/models"]
+    container_name: ccvnn_triton_v20
     ports:
-      - "8005:8000"  # HTTP Inference API
-      - "8001:8001"  # gRPC Inference API
-      - "8002:8002"  # Metrics API
+      - "8000:8000"  # HTTP endpoint
+      - "8001:8001"  # gRPC endpoint
+      - "8002:8002"  # Metrics endpoint
     volumes:
-      - ./model_repository:/models:ro
-    cap_add:
-      - SYS_NICE
-    environment:
-      - OMP_NUM_THREADS=1
-      - OMP_WAIT_POLICY=PASSIVE
-      - OMP_NUM_THREADS=2
-      - MKL_NUM_THREADS=2
-      - OPENBLAS_NUM_THREADS=2
-      - ONNXRUNTIME_NUM_THREADS=2
-      - KMP_AFFINITY=granularity=fine,compact,1,0
-    command:
-      - tritonserver
-      - --model-repository=/models
-      - --model-control-mode=poll
-      - --repository-poll-secs=10
-      - --strict-model-config=false
-      - --allow-grpc=true
-      - --allow-http=true
-      - --log-verbose=0
-      - --exit-on-error=true
+      - ./model_repository:/models
+    command: 
+      - "tritonserver"
+      - "--model-repository=/models"
+      - "--strict-model-config=true"
+      - "--log-verbose=0"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+  #
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
       interval: 10s
@@ -99,7 +122,7 @@ services:
           memory: 2G
     networks:
       - ccvnn-net
-
+      
   # 4. TimescaleDB / PostgreSQL Telemetry & Buffer Backing Store
   ccvnn-db:
     image: timescale/timescaledb:latest-pg15
@@ -193,7 +216,38 @@ services:
       - prometheus
     networks:
       - ccvnn-net
-
+# 8. FastAPI gRPC Bridge & External API Service (MUST BE UNDER SERVICES)
+  grpc-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.grpc_app
+    container_name: ccvnn-grpc-app
+    restart: unless-stopped
+    depends_on:
+      triton-server:
+        condition: service_healthy
+      ccvnn-db:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TRITON_HOST=triton-server
+      - TRITON_PORT=8001
+      - DB_HOST=ccvnn-db
+      - DB_PORT=5432
+      - DB_NAME=ccvnn_db
+      - DB_USER=postgres
+      - DB_PASS=postgrespassword
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/docs || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ccvnn-net
+    
 networks:
   ccvnn-net:
     driver: bridge

@@ -1,0 +1,1746 @@
+docker run --rm -it \
+  --net=host \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/models:/models \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/model_repository:/model_repository \
+  nvcr.io/nvidia/tritonserver:26.08-py3 \
+  tritonserver --model-repository=/models --model-repository=/model_repository
+  
+  services:
+  triton:
+    image: nvcr.io/nvidia/tritonserver:26.08-py3
+    volumes:
+      - ./models:/models
+      - ./model_repository:/model_repository
+    command: ["tritonserver", "--model-repository=/models", "--model-repository=/model_repository"]
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+	  
+# Check status of loaded models from both repositories
+curl -s http://localhost:8000/v2/repository/index | jq .
+
+tritonserver \
+  --model-repository=/mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/models \
+  --model-repository=/mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/model_repository
+  
+ perf_analyzer -m ccvnn_v17_backbone -i gRPC -u localhost:8001 --concurrency-range 1:15
+ perf_analyzer -m ccvnn_v17_backbone -i gRPC --concurrency-range 1:15
+ 
+ # Check global Triton server health status (HTTP 200 OK)
+curl -i http://localhost:8000/v2/health/ready
+
+# Check specific OpenVINO model instance status
+curl -s http://localhost:8000/v2/models/ccvnn_v17_backbone/ready
+
+gh pr create --base main --head Cyclotron_Cumluative_Vector \
+  --title "perf(triton): configure dynamic openvino ir model with cpu worker multi-streaming" \
+  --body "Integrated dynamic OpenVINO IR models, Triton multi-stream configs, gRPC runner, and SLA validation scripts."
+  
+  
+Execute SLA Validation Pipeline
+Run the performance pipeline to validate latency, throughput, and CPU worker multi-streaming against the newly pushed OpenVINO IR runtime files:
+ ./run_perf_sla.sh
+ 
+ python3 run_sla_pipeline.py
+
+
+Benchmark Triton Inference Server
+Benchmark request concurrency on ccvnn_v17_backbone using Triton's perf_analyzer:
+perf_analyzer -m ccvnn_v17_backbone -i gRPC --concurrency-range 1:15
+
+Run gRPC Performance Benchmark
+Measure throughput and latency across multi-stream CPU worker instances using perf_analyzer:
+perf_analyzer -m ccvnn_v17_backbone -i gRPC -u localhost:8001 --concurrency-range 1:15
+
+# Check status of loaded models from both repositories
+curl -s http://localhost:8000/v2/repository/index | jq .
+
+Actionable Execution
+Run Triton Server via Docker by mounting both repository directories into the container:
+docker run --rm -it \
+  --net=host \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/models:/models \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/model_repository:/model_repository \
+  nvcr.io/nvidia/tritonserver:26.08-py3 \
+  tritonserver --model-repository=/models --model-repository=/model_repository
+  
+  
+Alternative: Docker Compose
+If you are using docker-compose.yml, update the volumes and command sections of your Triton service:
+  services:
+  triton:
+    image: nvcr.io/nvidia/tritonserver:26.08-py3
+    volumes:
+      - ./models:/models
+      - ./model_repository:/model_repository
+    command: ["tritonserver", "--model-repository=/models", "--model-repository=/model_repository"]
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
+	  
+docker compose up -d tritonserver
+curl -i http://localhost:8000/v2/health/ready
+=====================================================================================================
+Quick-Start Resume Checklist
+1. Launch Triton Server (via Docker):
+
+docker run --rm -it \
+  --net=host \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/models:/models \
+  -v /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/model_repository:/model_repository \
+  nvcr.io/nvidia/tritonserver:26.08-py3 \
+  tritonserver --model-repository=/models --model-repository=/model_repository
+  
+2. Verify Server Readiness:
+curl -i http://localhost:8000/v2/health/ready
+
+3. Run SLA Pipeline & Benchmarks:
+python3 run_sla_pipeline.py
+===================================
+docker compose -f path/to/your-file.yaml config
+docker compose -f path/to/your-file.yaml config -q
+docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+docker compose -f path/to/your-file.yaml config --services
+docker compose -f path/to/your-file.yaml config --volumes
+docker compose -f path/to/your-file.yaml config --networks
+docker compose config
+===================================
+8 services:
+docker compose up -d --build
+docker compose ps
+curl -i http://localhost:8080/docs
+docker compose logs -f grpc-app
+
+Immediate Verification Steps
+Validate the updated Compose syntax:
+
+docker compose config
+docker compose up -d --build triton-server
+docker compose logs -f triton-server
+docker compose up -d --build
+docker compose ps
+curl -i http://localhost:8080/docs
+python3 scripts/test_e2e_containerized.py
+PYTHONPATH=. pytest watcher/tests/
+python3 run_sla_pipeline.py
+==================================
+.github/workflows/windows-rdp.yml:
+
+name: Azure Windows 11/Server RDP Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & Configure Firewall
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            # Fallback default password if secret is omitted
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Install & Configure Ngrok Tunnel
+        shell: powershell
+        run: |
+          # Download official Ngrok binary
+          Invoke-WebRequest -Uri "https://bin.equinox.io/c/b3511111111/ngrok-v3-stable-windows-amd64.zip" -OutFile "ngrok.zip"
+          Expand-Archive -Path "ngrok.zip" -DestinationPath "." -Force
+          
+          # Apply Ngrok Authtoken
+          if (-not "${{ secrets.NGROK_AUTH_TOKEN }}") {
+            Write-Error "NGROK_AUTH_TOKEN secret is missing in repository settings."
+            exit 1
+          }
+          .\ngrok.exe authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+
+      - name: Launch Tunnel & Print Connection Endpoint
+        shell: powershell
+        run: |
+          # Start Ngrok TCP tunnel on default RDP port 3389
+          Start-Process -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389" -NoNewWindow
+          Start-Sleep -Seconds 5
+          
+          # Query Ngrok local API to extract host and assigned port
+          $TunnelInfo = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels"
+          $RdpEndpoint = $TunnelInfo.tunnels[0].public_url -replace 'tcp://', ''
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   WINDOWS AZURE RDP SESSION IS ACTIVE"                    -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Connect Address : $RdpEndpoint"                           -ForegroundColor Yellow
+          Write-Host " Username        : runneradmin"                           -ForegroundColor Yellow
+          Write-Host " Password        : [Configured via RDP_PASSWORD Secret]"   -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+========================================================================
+.github/workflows/windows-rdp-tailscale.yml:
+name: Azure Windows 11/Server Tailscale RDP
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & Configure Firewall
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            # Fallback default password if secret is omitted
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          # Download official Tailscale MSI installer
+          $InstallerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
+          
+          # Silent installation
+          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet /norestart" -Wait
+          
+          # Add Tailscale binary path to current session env
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          # Authenticate node using reusable/ephemeral auth key
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTHKEY }} --hostname=github-runner-rdp --accept-routes
+
+      - name: Display RDP Connection Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          # Retrieve IPv4 assigned to this node on Tailscale network
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE MESH VPN RDP SESSION IS ACTIVE"             -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Connect Address : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " Username        : runneradmin"                           -ForegroundColor Yellow
+          Write-Host " Password        : [Configured via RDP_PASSWORD Secret]"   -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+===================
+.github/workflows/windows-rdp-tailscale.yml: ssh
+
+name: Azure Windows 11/Server Tailscale RDP, SSH & Subnet Router
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP and OpenSSH
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active (required for Tailscale SSH)
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing
+        shell: powershell
+        run: |
+          # Enable IPv4 Forwarding across all physical network adapters
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-rdp",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & Status Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          $SSHStatus = "${{ github.event.inputs.enable_ssh }}"
+          $AdvertisedRoutes = "${{ github.event.inputs.advertise_routes }}"
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE MESH VPN + SSH + SUBNET ROUTER ACTIVE"        -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Tailscale IP    : $TailscaleIP"                           -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " RDP Endpoint    : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " SSH Command     : ssh runneradmin@$TailscaleIP"           -ForegroundColor Yellow
+          Write-Host " Tailscale SSH   : $SSHStatus"                             -ForegroundColor Cyan
+          Write-Host " Subnet Routes   : $(if ($AdvertisedRoutes) { $AdvertisedRoutes } else { 'None' })" -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+
+======================================================================================
+policy.hujson:
+
+{
+  // Define tag ownership for GitHub Actions runners
+  "tagOwners": {
+    "tag:github-runner": ["autogroup:admin"]
+  },
+
+  // Automatically approve advertised routes without manual intervention
+  "autoApprovers": {
+    "routes": {
+      // Auto-approve specific internal subnet ranges advertised by runner nodes
+      "10.0.0.0/8":     ["tag:github-runner"],
+      "172.16.0.0/12":  ["tag:github-runner"],
+      "192.168.0.0/16": ["tag:github-runner"]
+    }
+  },
+
+  // ACL Rules allowing Tailnet members access to tagged runner nodes
+  "acls": [
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:github-runner:*"]
+    }
+  ],
+
+  // Tailscale SSH policy for tagged runner nodes
+  "ssh": [
+    {
+      "action": "check",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:github-runner"],
+      "users":  ["runneradmin", "root", "ubuntu"]
+    }
+  ]
+}
+Update the tailscale up Step in .github/workflows/windows-rdp-tailscale.yml:
+$ArgsList = @(
+  "up",
+  "--authkey=$AuthKey",
+  "--hostname=github-runner-rdp",
+  "--tag=tag:github-runner",
+  "--accept-routes=true"
+)
+=========================================================
+.github/workflows/windows-rdp-tailscale.yml
+
+name: Azure Windows 11/Server Tailscale RDP, SSH & Subnet Router
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP and OpenSSH
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active (required for Tailscale SSH)
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing
+        shell: powershell
+        run: |
+          # Enable IPv4 Forwarding across all physical network adapters
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-rdp",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & Status Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          $SSHStatus = "${{ github.event.inputs.enable_ssh }}"
+          $AdvertisedRoutes = "${{ github.event.inputs.advertise_routes }}"
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE MESH VPN + SSH + SUBNET ROUTER ACTIVE"        -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Tailscale IP    : $TailscaleIP"                           -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " ACL Tag         : tag:github-runner"                      -ForegroundColor Yellow
+          Write-Host " RDP Endpoint    : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " SSH Command     : ssh runneradmin@$TailscaleIP"           -ForegroundColor Yellow
+          Write-Host " Tailscale SSH   : $SSHStatus"                             -ForegroundColor Cyan
+          Write-Host " Subnet Routes   : $(if ($AdvertisedRoutes) { $AdvertisedRoutes } else { 'None' })" -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+============================================
+name: Azure Windows 11/Server Tailscale RDP, SSH, Subnet Router & Exit Node
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP and OpenSSH
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active (required for Tailscale SSH)
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing & Exit Node
+        shell: powershell
+        run: |
+          # Enable IPv4 Forwarding across all active network interfaces
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $EnableExitNode = "${{ github.event.inputs.enable_exit_node }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-rdp",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($EnableExitNode -eq 'true') {
+            $ArgsList += "--advertise-exit-node"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & Status Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          $SSHStatus = "${{ github.event.inputs.enable_ssh }}"
+          $ExitNodeStatus = "${{ github.event.inputs.enable_exit_node }}"
+          $AdvertisedRoutes = "${{ github.event.inputs.advertise_routes }}"
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE RDP, SSH, SUBNET ROUTER & EXIT NODE ACTIVE"  -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Tailscale IP    : $TailscaleIP"                           -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " ACL Tag         : tag:github-runner"                      -ForegroundColor Yellow
+          Write-Host " RDP Endpoint    : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " SSH Command     : ssh runneradmin@$TailscaleIP"           -ForegroundColor Yellow
+          Write-Host " Tailscale SSH   : $SSHStatus"                             -ForegroundColor Cyan
+          Write-Host " Exit Node       : $ExitNodeStatus"                        -ForegroundColor Cyan
+          Write-Host " Subnet Routes   : $(if ($AdvertisedRoutes) { $AdvertisedRoutes } else { 'None' })" -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+==================================================================
+policy.hujson
+
+"autoApprovers": {
+    "routes": {
+      "10.0.0.0/8":     ["tag:github-runner"],
+      "172.16.0.0/12":  ["tag:github-runner"],
+      "192.168.0.0/16": ["tag:github-runner"]
+    },
+    "exitNode": [
+      "tag:github-runner"
+    ]
+  }
+  
+ =========================
+ Add automated software installation steps for Docker, Git, Python, and VS Code to the Windows RDP workflow.
+ .github/workflows/windows-rdp-tailscale.yml
+ 
+ name: Azure Windows 11/Server Tailscale RDP, SSH, Subnet Router & Dev Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      install_devtools:
+        description: 'Automate installation of Git, Python, VS Code & Docker'
+        type: boolean
+        required: false
+        default: true
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP and OpenSSH
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Install Developer Software Suite (Git, Python, VS Code, Docker)
+        if: ${{ github.event.inputs.install_devtools == 'true' }}
+        shell: powershell
+        run: |
+          Write-Host "Installing Git, Python, VS Code, and Docker Desktop via Chocolatey..." -ForegroundColor Cyan
+          
+          # Install core packages via Chocolatey package manager
+          choco install git.install python3 vscode docker-desktop -y --no-progress
+          
+          # Reload machine and user environment variables into active PowerShell session
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          
+          Write-Host "Developer environment software installed successfully." -ForegroundColor Green
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing & Exit Node
+        shell: powershell
+        run: |
+          # Enable IPv4 Forwarding across all active network interfaces
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $EnableExitNode = "${{ github.event.inputs.enable_exit_node }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-rdp",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($EnableExitNode -eq 'true') {
+            $ArgsList += "--advertise-exit-node"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & Status Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          $SSHStatus = "${{ github.event.inputs.enable_ssh }}"
+          $ExitNodeStatus = "${{ github.event.inputs.enable_exit_node }}"
+          $DevToolsStatus = "${{ github.event.inputs.install_devtools }}"
+          $AdvertisedRoutes = "${{ github.event.inputs.advertise_routes }}"
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE RDP, SSH & FULL DEV ENVIRONMENT ACTIVE"      -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Tailscale IP    : $TailscaleIP"                           -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " ACL Tag         : tag:github-runner"                      -ForegroundColor Yellow
+          Write-Host " RDP Endpoint    : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " SSH Command     : ssh runneradmin@$TailscaleIP"           -ForegroundColor Yellow
+          Write-Host " Dev Tools       : Git, Python, VS Code, Docker ($DevToolsStatus)" -ForegroundColor Cyan
+          Write-Host " Tailscale SSH   : $SSHStatus"                             -ForegroundColor Cyan
+          Write-Host " Exit Node       : $ExitNodeStatus"                        -ForegroundColor Cyan
+          Write-Host " Subnet Routes   : $(if ($AdvertisedRoutes) { $AdvertisedRoutes } else { 'None' })" -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+===================================
+Add steps to pre-clone a GitHub repository directly onto the Windows Desktop in the workflow.
+.github/workflows/windows-rdp-tailscale.yml
+
+name: Azure Windows 11/Server Tailscale RDP, SSH, Subnet Router & Dev Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      install_devtools:
+        description: 'Automate installation of Git, Python, VS Code & Docker'
+        type: boolean
+        required: false
+        default: true
+      target_repo_url:
+        description: 'GitHub repository URL to clone onto Desktop (leave blank for current repo)'
+        required: false
+        default: ''
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP and OpenSSH
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Install Developer Software Suite (Git, Python, VS Code, Docker)
+        if: ${{ github.event.inputs.install_devtools == 'true' }}
+        shell: powershell
+        run: |
+          Write-Host "Installing Git, Python, VS Code, and Docker Desktop via Chocolatey..." -ForegroundColor Cyan
+          
+          # Install core packages via Chocolatey package manager
+          choco install git.install python3 vscode docker-desktop -y --no-progress
+          
+          # Reload machine and user environment variables into active PowerShell session
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          
+          Write-Host "Developer environment software installed successfully." -ForegroundColor Green
+
+      - name: Pre-Clone Target Repository to Desktop
+        shell: powershell
+        run: |
+          $RepoUrl = "${{ github.event.inputs.target_repo_url }}"
+          if (-not $RepoUrl) {
+            # Default to current repository using GitHub Token for authenticated access
+            $RepoUrl = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          }
+          
+          # Resolve runneradmin Desktop folder path
+          $DesktopPath = "C:\Users\runneradmin\Desktop"
+          if (-not (Test-Path $DesktopPath)) {
+            $DesktopPath = [System.IO.Path]::Combine($env:USERPROFILE, "Desktop")
+            New-Item -ItemType Directory -Path $DesktopPath -Force | Out-Null
+          }
+          
+          Set-Location -Path $DesktopPath
+          Write-Host "Cloning repository to Desktop: $RepoUrl" -ForegroundColor Cyan
+          
+          git clone $RepoUrl
+          Write-Host "Repository cloned successfully onto the Desktop." -ForegroundColor Green
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing & Exit Node
+        shell: powershell
+        run: |
+          # Enable IPv4 Forwarding across all active network interfaces
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $EnableExitNode = "${{ github.event.inputs.enable_exit_node }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-rdp",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($EnableExitNode -eq 'true') {
+            $ArgsList += "--advertise-exit-node"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & Status Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          $SSHStatus = "${{ github.event.inputs.enable_ssh }}"
+          $ExitNodeStatus = "${{ github.event.inputs.enable_exit_node }}"
+          $DevToolsStatus = "${{ github.event.inputs.install_devtools }}"
+          $AdvertisedRoutes = "${{ github.event.inputs.advertise_routes }}"
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   TAILSCALE RDP, SSH & FULL DEV ENVIRONMENT ACTIVE"      -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Tailscale IP    : $TailscaleIP"                           -ForegroundColor Yellow
+          Write-Host " Hostname        : github-runner-rdp"                      -ForegroundColor Yellow
+          Write-Host " ACL Tag         : tag:github-runner"                      -ForegroundColor Yellow
+          Write-Host " RDP Endpoint    : $TailscaleIP:3389"                     -ForegroundColor Yellow
+          Write-Host " SSH Command     : ssh runneradmin@$TailscaleIP"           -ForegroundColor Yellow
+          Write-Host " Desktop Repo    : Cloned to C:\Users\runneradmin\Desktop" -ForegroundColor Cyan
+          Write-Host " Dev Tools       : Git, Python, VS Code, Docker ($DevToolsStatus)" -ForegroundColor Cyan
+          Write-Host " Tailscale SSH   : $SSHStatus"                             -ForegroundColor Cyan
+          Write-Host " Exit Node       : $ExitNodeStatus"                        -ForegroundColor Cyan
+          Write-Host " Subnet Routes   : $(if ($AdvertisedRoutes) { $AdvertisedRoutes } else { 'None' })" -ForegroundColor Cyan
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+===============================================================
+.github/workflows/windows-rdp-tailscale.yml: CCVNN 8 services version.
+
+name: CCVNN Production Stack - Windows RDP, Tailscale, SSH & 8 Microservices
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      deploy_ccvnn_stack:
+        description: 'Bootstrap & Deploy the 8 CCVNN Microservices (Docker Compose)'
+        type: boolean
+        required: false
+        default: true
+      target_repo_url:
+        description: 'Repository URL containing CCVNN source/models (blank for current repo)'
+        required: false
+        default: ''
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  production-rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server### `.github/workflows/windows-rdp-tailscale.yml`
+
+```yaml
+
+name: CCVNN Production Suite - Azure Windows 11/Server Tailscale RDP & Microservices
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      deploy_ccvnn_services:
+        description: 'Spin up CCVNN 8-Service Stack (Triton, gRPC Bridge, Timescale, etc.)'
+        type: boolean
+        required: false
+        default: true
+      target_repo_url:
+        description: 'GitHub repository URL to clone onto Desktop (leave blank for current repo)'
+        required: false
+        default: ''
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP, OpenSSH, and CCVNN Stack
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Install Developer Tools & Docker Engine
+        shell: powershell
+        run: |
+          Write-Host "Installing Git, Python, VS Code, Docker, and OpenSSL via Chocolatey..." -ForegroundColor Cyan
+          
+          choco install git.install python3 vscode docker-desktop openssl -y --no-progress
+          
+          # Reload machine and user environment variables into active PowerShell session
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+      - name: Pre-Clone Target Repository to Desktop
+        shell: powershell
+        run: |
+          $RepoUrl = "${{ github.event.inputs.target_repo_url }}"
+          if (-not $RepoUrl) {
+            $RepoUrl = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@[github.com/$](https://github.com/$){{ github.repository }}.git"
+          }
+          
+          $DesktopPath = "C:\Users\runneradmin\Desktop"
+          if (-not (Test-Path $DesktopPath)) {
+            $DesktopPath = [System.IO.Path]::Combine($env:USERPROFILE, "Desktop")
+            New-Item -ItemType Directory -Path $DesktopPath -Force | Out-Null
+          }
+          
+          Set-Location -Path $DesktopPath
+          Write-Host "Cloning CCVNN workspace repository to Desktop..." -ForegroundColor Cyan
+          git clone $RepoUrl
+          Write-Host "Repository cloned successfully onto Desktop." -ForegroundColor Green
+
+      - name: Generate & Launch CCVNN 8-Service Stack
+        if: ${{ github.event.inputs.deploy_ccvnn_services == 'true' }}
+        shell: powershell
+        run: |
+          Write-Host "Configuring CCVNN 8-Service Microservices Stack..." -ForegroundColor Cyan
+          
+          $CCVNNPath = "C:\Users\runneradmin\Desktop\ccvnn-stack"
+          New-Item -ItemType Directory -Path $CCVNNPath -Force | Out-Null
+          Set-Location -Path $CCVNNPath
+
+          # Generate production-ready Docker Compose manifest for CCVNN microservices
+          $ComposeContent = @"
+          version: '3.8'
+
+          networks:
+            ccvnn-net:
+              driver: bridge
+
+          services:
+            # 1. Triton Inference Server (Model Execution Core)
+            triton-inference-server:
+              image: nvcr.io/nvidia/tritonserver:24.01-py3
+              container_name: ccvnn-triton
+              command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true --allow-metrics=true
+              ports:
+                - "8000:8000"  # HTTP
+                - "8001:8001"  # gRPC
+                - "8002:8002"  # Metrics
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 2. FastAPI gRPC Bridge Service
+            fastapi-grpc-bridge:
+              image: python:3.11-slim
+              container_name: ccvnn-grpc-bridge
+              command: sh -c "pip install --no-cache-dir fastapi uvicorn grpcio protobuf && uvicorn --host 0.0.0.0 --port 8080 --inline-limit 100"
+              ports:
+                - "8080:8080"
+                - "50051:50051"
+              environment:
+                - TRITON_SERVER_URL=triton-inference-server:8001
+                - TIMESCALE_DB_URL=postgres://postgres:ccvnn_pass@timescaledb:5432/telemetry
+              depends_on:
+                - triton-inference-server
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 3. TimescaleDB (Telemetry & Time-Series Data)
+            timescaledb:
+              image: timescale/timescaledb:latest-pg15
+              container_name: ccvnn-timescaledb
+              environment:
+                - POSTGRES_DB=telemetry
+                - POSTGRES_PASSWORD=ccvnn_pass
+              ports:
+                - "5432:5432"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 4. MQTT Broker (EMQX / Eclipse Mosquitto Message Bus)
+            mqtt-broker:
+              image: eclipse-mosquitto:2.0
+              container_name: ccvnn-mqtt-broker
+              ports:
+                - "1883:1883"
+                - "9001:9001"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 5. PLC Hardware Simulator (Industrial Edge Integration Testing)
+            plc-hardware-simulator:
+              image: alpine:latest
+              container_name: ccvnn-plc-simulator
+              command: sh -c "apk add --no-cache netcat-openbsd && while true; do echo 'PLC Telemetry Alive' | nc -l -p 502; sleep 1; done"
+              ports:
+                - "502:502"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 6. Dedicated Watcher Engine (Edge & Convergence Governor)
+            watcher-engine:
+              image: python:3.11-slim
+              container_name: ccvnn-watcher-engine
+              command: python -c "import time; print('CCVNN Watcher Governor Active...'); time.sleep(36000)"
+              depends_on:
+                - mqtt-broker
+                - triton-inference-server
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 7. Prometheus Collector
+            prometheus:
+              image: prom/prometheus:latest
+              container_name: ccvnn-prometheus
+              ports:
+                - "9090:9090"
+              networks:
+                - ccvnn-net
+              restart: always
+
+            # 8. Grafana Dashboard
+            grafana:
+              image: grafana/grafana:latest
+              container_name: ccvnn-grafana
+              ports:
+                - "3000:3000"
+              environment:
+                - GF_SECURITY_ADMIN_PASSWORD=ccvnn_admin
+              depends_on:
+                - prometheus
+              networks:
+                - ccvnn-net
+              restart: always
+          "@
+
+          $ComposeContent | Out-File -FilePath "$CCVNNPath\docker-compose.yml" -Encoding utf8
+          
+          Write-Host "Spinning up all 8 CCVNN containerized components..." -ForegroundColor Cyan
+          docker compose -f "$CCVNNPath\docker-compose.yml" up -d
+          
+          Start-Sleep -Seconds 10
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "[https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe](https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe)" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing & Exit Node
+        shell: powershell
+        run: |
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $EnableExitNode = "${{ github.event.inputs.enable_exit_node }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-ccvnn",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($EnableExitNode -eq 'true') {
+            $ArgsList += "--advertise-exit-node"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & CCVNN Stack Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   CCVNN PRODUCTION SUITE & TAILSCALE RDP IS ACTIVE"     -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Node Tailscale IP : $TailscaleIP"                         -ForegroundColor Yellow
+          Write-Host " Hostname          : github-runner-ccvnn"                  -ForegroundColor Yellow
+          Write-Host " RDP Endpoint      : $TailscaleIP:3389"                   -ForegroundColor Yellow
+          Write-Host " SSH Access        : ssh runneradmin@$TailscaleIP"         -ForegroundColor Yellow
+          Write-Host "---------------------------------------------------------" -ForegroundColor Green
+          Write-Host " CCVNN 8-SERVICE STACK ENDPOINTS (via Tailscale mesh):"   -ForegroundColor Cyan
+          Write-Host "  1. Triton HTTP API   : http://$TailscaleIP:8000"         -ForegroundColor White
+          Write-Host "  2. Triton gRPC API   : $TailscaleIP:8001"                -ForegroundColor White
+          Write-Host "  3. FastAPI Bridge    : http://$TailscaleIP:8080"         -ForegroundColor White
+          Write-Host "  4. TimescaleDB       : $TailscaleIP:5432"                -ForegroundColor White
+          Write-Host "  5. MQTT Broker       : $TailscaleIP:1883"                -ForegroundColor White
+          Write-Host "  6. PLC Simulator     : $TailscaleIP:502"                 -ForegroundColor White
+          Write-Host "  7. Prometheus UI     : http://$TailscaleIP:9090"         -ForegroundColor White
+          Write-Host "  8. Grafana Dashboard : http://$TailscaleIP:3000 (admin/ccvnn_admin)" -ForegroundColor White
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+#====================================
+Tailscale ACL Policy Verification:
+Ensure your Tailscale ACL policy permits port access to tag:github-runner for your team members:
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:github-runner:8000,8001,8002,8080,50051,5432,1883,9001,502,9090,3000,3389,22"]
+    }
+  ]
+}
+====================================================
+model_repository/
+└── ccvnn/
+    ├── config.pbtxt
+    └── 1/
+        └── model.onnx
+		
+Triton Model Configuration (config.pbtxt):
+name: "ccvnn"
+platform: "onnxruntime_onnx"
+max_batch_size: 32
+
+# Input tensor definition supporting dynamic batch size and complex/dual-channel inputs
+input [
+  {
+    name: "input_real_imag"
+    data_type: TYPE_FP32
+    dims: [ 2, 64, 64 ]  # [Channels (Real/Imag), Height, Width]
+  }
+]
+
+# Output classification / feature representation tensor
+output [
+  {
+    name: "output_logits"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+# Enable dynamic batching to maximize throughput without padding overhead
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 5000
+}
+
+# Instance allocation across host resources
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+# Optimization strategy for execution providers
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator : [
+      {
+        name : "tensorrt"
+        parameters { key: "precision_mode" value: "FP16" }
+      }
+    ]
+  }
+}
+
+Key Configuration NotesBackend Interchangeability: If deploying via PyTorch TorchScript instead of ONNX, set platform: "pytorch_libtorch" and rename model.onnx to model.pt.Complex Value Representation: Dual 2-channel tensors ([2, H, W]) represent interleaved real and imaginary matrix components for complex-valued neural network layers.Queue Optimization: max_queue_delay_microseconds: 5000 allows Triton to aggregate incoming individual client requests into optimal dynamic batches before passing them to the execution engine.
+
+Python gRPC client script to send inference requests to this CCVNN Triton model
+
+pip install tritonclient[grpc] numpy
+#triton_client_inference.py:
+
+import numpy as np
+import tritonclient.grpc as grpcclient
+
+def run_ccvnn_inference(server_url="localhost:8001", batch_size=4):
+    """
+    Sends an inference request to Triton Server over gRPC for the CCVNN model.
+    """
+    try:
+        triton_client = grpcclient.InferenceServerClient(url=server_url)
+    except Exception as e:
+        print(f"Failed to create Triton gRPC client: {e}")
+        return
+
+    # Match configuration defined in config.pbtxt
+    model_name = "ccvnn"
+    input_name = "input_real_imag"
+    output_name = "output_logits"
+
+    # Shape: [batch_size, 2, 64, 64] -> FP32 (Channel 0: Real, Channel 1: Imaginary)
+    input_data = np.random.randn(batch_size, 2, 64, 64).astype(np.float32)
+
+    # Prepare input tensor object
+    inputs = [grpcclient.InferInput(input_name, input_data.shape, "FP32")]
+    inputs[0].set_data_from_numpy(input_data)
+
+    # Prepare requested output object
+    outputs = [grpcclient.InferRequestedOutput(output_name)]
+
+    print(f"Submitting batch of {batch_size} to Triton gRPC endpoint ({server_url})...")
+    
+    # Execute synchronous inference call
+    results = triton_client.infer(
+        model_name=model_name,
+        inputs=inputs,
+        outputs=outputs
+    )
+
+    # Parse response array
+    output_logits = results.as_numpy(output_name)
+    
+    print("\n--- Inference Response Received ---")
+    print(f"Output Tensor Shape : {output_logits.shape}")
+    print(f"Sample Logits Output :\n{output_logits}")
+
+if __name__ == "__main__":
+    # Pass Tailscale IP (e.g., '100.x.y.z:8001') when querying runner remotely over mesh VPN
+    run_ccvnn_inference(server_url="localhost:8001", batch_size=4)
+
+Remote Execution Over Tailscale
+When calling the runner node across your Tailnet mesh VPN:
+
+Retrieve the node's Tailscale IPv4 address from your workflow log output or tailscale status.
+
+Replace "localhost:8001" with "<TAILSCALE_IP>:8001".
+
+Ensure port 8001 is allowed by your Tailscale ACL policy for your user or group
+
+Triton perf_analyzer for gRPC benchmarking on the CCVNN model
+
+# Basic gRPC latency and throughput test
+perf_analyzer -m ccvnn \
+  -i grpc \
+  -u localhost:8001 \
+  --shape input_real_imag:2,64,64
+perf_analyzer -m ccvnn \
+  -i grpc \
+  -u localhost:8001 \
+  --shape input_real_imag:2,64,64 \
+  -b 8 \
+  --concurrency-range 1:16:2 \
+  --measurement-interval 10000 \
+  --percentile 95 \
+  -f ccvnn_perf_report.csv
+  
+  
+  perf_analyzer -m ccvnn_v17_backbone \
+  -i grpc \
+  -u localhost:8001 \
+  --shape v_input_17:1,17 \
+  -b 1 \
+  --concurrency-range 1:8:1 \
+  --measurement-interval 5000
+  ================================
+  
+  
+  import torch
+import torch.nn as nn
+
+class CCVNNV17Backbone(nn.Module):
+    def __init__(self, input_dim=17, hidden_dim=64, output_dim=1):
+        super(CCVNNV17Backbone, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.Hardswish(),  # Or custom ACON activation module
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Hardswish(),
+            nn.Linear(hidden_dim // 2, output_dim),
+            nn.Sigmoid()     # Produces hazard probability [0.0, 1.0]
+        )
+
+    def forward(self, v_input_17):
+        return self.net(v_input_17)
+
+Expand-Archive -Path "$env:USERPROFILE\Downloads\model_repository.zip" -DestinationPath "C:\Users\runneradmin\Desktop\ccvnn-stack" -Force
+Get-ChildItem -Recurse "C:\Users\runneradmin\Desktop\ccvnn-stack\model_repository"
+Set-Location "C:\Users\runneradmin\Desktop\ccvnn-stack"
+docker compose up -d triton-inference-server
+
+Guide me through adding my Jetson Orin to my new Tailnet

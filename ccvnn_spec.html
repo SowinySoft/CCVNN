@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CCVNN V17 &amp; Cumulative Actuation Vector Specification</title>
+    <style>
+        body { 
+            background-color: #0f172a; 
+            color: #e2e8f0; 
+            font-family: 'Courier New', Courier, monospace; 
+            padding: 2.5rem; 
+            line-height: 1.6; 
+        }
+        h1, h2 { 
+            color: #38bdf8; 
+            border-bottom: 1px solid #334155; 
+            padding-bottom: 0.5rem; 
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 1.5rem 0; 
+            background-color: #1e293b; 
+        }
+        th, td { 
+            border: 1px solid #475569; 
+            padding: 0.75rem; 
+            text-align: left; 
+            font-size: 0.9rem; 
+        }
+        th { 
+            background-color: #334155; 
+            color: #f8fafc; 
+        }
+        code { 
+            color: #f472b6; 
+            background-color: #090d16;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+        .equation-block {
+            background-color: #1e293b;
+            border-left: 4px solid #38bdf8;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>CCVNN V17 &amp; Cumulative Actuation Vector ($V_{\text{cum}}$) Specification</h1>
+    <p><strong>Target Architecture:</strong> High-Precision Edge Inference &amp; PLC State Management</p>
+
+    <h2>1. Factorized Vector Notation ($V_{17}$)</h2>
+    <p>Vector <code>v_i</code> captures local spatial and photometric attributes across a 5-point cardinal cross-stencil:</p>
+    <div class="equation-block">
+        <code>v_i = [ r_i/h, c_i/w, hex_C/255, hex_L/255, hex_U/255, hex_R/255, hex_D/255, c_type, (log2(h) + log2(w))/20, e_10, ..., e_17 ]^T</code>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Element</th>
+                <th>Name / Parameter</th>
+                <th>Mathematical Formula / Definition</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td><strong>e_1</strong></td><td>Normalized Row</td><td><code>r_i / h</code></td></tr>
+            <tr><td><strong>e_2</strong></td><td>Normalized Column</td><td><code>c_i / w</code></td></tr>
+            <tr><td><strong>e_3</strong></td><td>Center Hex Intensity</td><td><code>hex_C / 255</code></td></tr>
+            <tr><td><strong>e_4</strong></td><td>Left Hex Intensity</td><td><code>hex_L / 255</code></td></tr>
+            <tr><td><strong>e_5</strong></td><td>Upper Hex Intensity</td><td><code>hex_U / 255</code></td></tr>
+            <tr><td><strong>e_6</strong></td><td>Right Hex Intensity</td><td><code>hex_R / 255</code></td></tr>
+            <tr><td><strong>e_7</strong></td><td>Down Hex Intensity</td><td><code>hex_D / 255</code></td></tr>
+            <tr><td><strong>e_8</strong></td><td>Component Type Descriptor</td><td><code>c_type</code></td></tr>
+            <tr><td><strong>e_9</strong></td><td>Scale Factor</td><td><code>(log2(h) + log2(w)) / 20</code></td></tr>
+            <tr><td><strong>e_10</strong></td><td>Red Channel Mean</td><td><code>(1 / (N * 255)) * sum(R_k)</code></td></tr>
+            <tr><td><strong>e_11</strong></td><td>Green Channel Mean</td><td><code>(1 / (N * 255)) * sum(G_k)</code></td></tr>
+            <tr><td><strong>e_12</strong></td><td>Blue Channel Mean</td><td><code>(1 / (N * 255)) * sum(B_k)</code></td></tr>
+            <tr><td><strong>e_13</strong></td><td>Luminance Variance</td><td><code>(1 / N) * sum((Y_k - B_lux * 255)^2)</code></td></tr>
+            <tr><td><strong>e_14</strong></td><td>Absolute Brightness</td><td><code>B_lux = (1 / (N * 255)) * sum(Y_k)</code> (where <code>Y_k = 0.299R_k + 0.587G_k + 0.114B_k</code>)</td></tr>
+            <tr><td><strong>e_15</strong></td><td>Dynamic Contrast Ratio</td><td><code>C_ratio = (Y_max - Y_min) / (Y_max + Y_min + epsilon)</code> (where <code>epsilon = 10^-5</code>)</td></tr>
+            <tr><td><strong>e_16</strong></td><td>Gradient Magnitude</td><td><code>(1 / N) * sum(sqrt(DX_k^2 + DY_k^2))</code></td></tr>
+            <tr><td><strong>e_17</strong></td><td>Specular Reflection Index</td><td><code>R_specular = (1 / N) * sum(I(Y_k > T_sat) * (Y_k - T_sat) / (255 - T_sat))</code> (where <code>T_sat = 245</code>)</td></tr>
+        </tbody>
+    </table>
+
+    <h2>2. Cumulative Actuation Vector ($V_{\text{cum}}$)</h2>
+    <p>State vector <code>V_cum</code> manages real-time edge PLC control, smoothing, and hardware telemetry:</p>
+    <div class="equation-block">
+        <code>V_cum = [ S_anomaly, S_cum, I_severity, C_debounce, R_PLC, T_latency, H_health, Z_hash ]^T</code>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Element</th>
+                <th>Component Name</th>
+                <th>Operational Equation / Expression</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr><td><strong>V_0</strong></td><td>Instantaneous Anomaly</td><td><code>S_anomaly in [0, 1]</code> (Raw single-frame defect probability)</td></tr>
+            <tr><td><strong>V_1</strong></td><td>Cumulative Anomaly (EMA)</td><td><code>S_cum^(t) = alpha * S_cum^(t-1) + (1 - alpha) * S_anomaly^(t)</code></td></tr>
+            <tr><td><strong>V_2</strong></td><td>Hazard Severity Tier</td><td><code>I_severity = mapped tier from score thresholds (0, 1, 2)</code></td></tr>
+            <tr><td><strong>V_3</strong></td><td>Debounce Confidence Ratio</td><td><code>C_debounce = (1 / W) * sum(I(S_anomaly > tau_det))</code> across window <code>W</code></td></tr>
+            <tr><td><strong>V_4</strong></td><td>PLC Actuation Flag</td><td><code>R_PLC = step(C_debounce - tau_actuate) * bitmask</code></td></tr>
+            <tr><td><strong>V_5</strong></td><td>Glass-to-Glass Latency</td><td><code>T_latency = t_render - t_capture</code> (measured in ms)</td></tr>
+            <tr><td><strong>V_6</strong></td><td>System Health Index</td><td><code>H_health = DaemonStatus AND BrokerConnected</code></td></tr>
+            <tr><td><strong>V_7</strong></td><td>Spatial Inspection Hash</td><td><code>Z_hash = CRC32(ROI_coords || FrameCounter)</code></td></tr>
+			<section id="v20-extensions">
+    <h2>CCVNN V20 Extension Nodes (E18–E20)</h2>
+    <p>To enhance structural defect and texture analysis, the V20 specification introduces three specialized expansion channels (E18, E19, E20) integrated directly into the feature extraction backbone:</p>
+    <ul>
+        <li><strong>E18 (Rust / Corrosion Index):</strong> Quantifies chromatic oxidation and saturation anomalies using normalized color channel differentials combined with local saturation.</li>
+        <li><strong>E19 (Blurring Degree / Masking):</strong> Represents inverse gradient magnitude response to evaluate edge sharpness and region blurring.</li>
+        <li><strong>E20 (Dispersal, Fragmentation, or Scattering):</strong> Computes the local coefficient of variation (ratio of local variance to absolute mean) across the spatial stencil.</li>
+    </ul>
+	</section>
+
+	<section id="v20-evaluation">
+		<h2>Dual-Mode V20 Architecture & Systems Evaluation</h2>
+		<p>The V20 pipeline transitions from client-side preprocessing to an end-to-end compiled graph executed entirely via the OpenVINO backend in Triton Inference Server:</p>
+		<ul>
+			<li><strong>End-to-End Graph Compilation:</strong> Raw RGBA tensors (<code>[-1, 4, 64, 64]</code>) are ingested directly by Triton, offloading feature expansion and spatial transformations to OpenVINO IR.</li>
+			<li><strong>Runtime Unification:</strong> Both the inference backbone (<code>ccvnn_v20_backbone</code>) and vision engine (<code>ccvnn</code>) utilize the OpenVINO runtime, removing mixed-backend dependencies.</li>
+			<li><strong>Dynamic Batching Optimization:</strong> Standardized with dynamic batch dimensions, enabling zero-padding request coalescing under high-concurrency production workloads.</li>
+		</ul>
+	</section>
+        </tbody>
+    </table>
+</body>
+</html>

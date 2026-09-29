@@ -67,7 +67,21 @@ jobs:
             done
           '
           echo "Triton Server is READY!"
+      
+      - name: Wait for gRPC FastAPI Service Readiness
+        run: |
+          echo "Waiting for gRPC FastAPI Service to become ready..."
+          timeout 60s bash -c '
+            until curl -s -f http://localhost:8080/docs > /dev/null 2>&1; do
+              echo "Waiting for FastAPI gRPC endpoint (http://localhost:8080/docs)..."
+              sleep 2
+            done
+          '
+          echo "gRPC FastAPI Service is READY!"
 
+      - name: Verify Service Health
+        run: |
+          docker compose ps
       - name: Verify Service Health
         run: |
           docker compose ps

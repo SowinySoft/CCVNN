@@ -1,0 +1,31 @@
+name: "ccvnn"
+backend: "openvino"
+max_batch_size: 0
+
+input [
+  {
+    name: "input_rgba"
+    data_type: TYPE_FP32
+    dims: [ -1, 4, 64, 64 ]
+  }
+]
+
+output [
+  {
+    name: "output_logits"
+    data_type: TYPE_FP32
+    dims: [ -1, 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 5000
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]

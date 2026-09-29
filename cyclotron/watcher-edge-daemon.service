@@ -1,0 +1,42 @@
+#/etc/systemd/system/watcher-edge-daemon.service
+[Unit]
+Description=CCVNN Watcher Edge Daemon & Modbus Control Loop
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Restart=always
+RestartSec=3s
+TimeoutStopSec=10s
+
+# Clean previous containers on startup
+ExecStartPre=-/usr/bin/docker stop watcher-edge-daemon
+ExecStartPre=-/usr/bin/docker rm watcher-edge-daemon
+
+# Execute low-latency containerized process
+ExecStart=/usr/bin/docker run --name watcher-edge-daemon \
+    --net=host \
+    --ipc=host \
+    --cpuset-cpus="0-3" \
+    --memory="2g" \
+    --restart=no \
+    -e OMP_NUM_THREADS=4 \
+    -e MODBUS_IP=192.168.1.100 \
+    -e MODBUS_PORT=502 \
+    -e ANOMALY_THRESHOLD=0.75 \
+    -e CONSECUTIVE_REQUIRED=5 \
+    ccvnn/watcher-edge-daemon:v17-latest
+
+ExecStop=/usr/bin/docker stop watcher-edge-daemon
+
+# Real-time Kernel & OS Performance Tweaks
+CPUSchedulingPolicy=rr
+CPUSchedulingPriority=80
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

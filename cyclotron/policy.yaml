@@ -1,0 +1,16 @@
+#/etc/grafana/provisioning/alerting/policy.yaml
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: Edge-Operations-Team
+    group_by: ['alertname', 'severity', 'instance']
+    group_wait: 10s
+    group_interval: 30s
+    repeat_interval: 4h
+    routes:
+      - receiver: Edge-Operations-Team
+        object_matchers:
+          - ["severity", "=", "critical"]
+          - ["subsystem", "=", "hardware_actuation"]
+        continue: false

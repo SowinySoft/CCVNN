@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: always
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: ccvnn-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=ccvnn-admin-password
+      - DOCKER_INFLUXDB_INIT_ORG=ccvnn
+      - DOCKER_INFLUXDB_INIT_BUCKET=v_cum_metrics
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=ccvnn-edge-telemetry-token
+    restart: always
+
+  telegraf:
+    image: telegraf:1.28
+    container_name: ccvnn-telegraf
+    depends_on:
+      - mosquitto
+      - influxdb
+    volumes:
+      - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    restart: always
+
+  grafana:
+    image: grafana/grafana-oss:10.2.0
+    container_name: ccvnn-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_ALERTING_ENABLED=true
+    volumes:
+      - ./alerting/contactpoints.yaml:/etc/grafana/provisioning/alerting/contactpoints.yaml:ro
+      - ./alerting/alert_rules.yaml:/etc/grafana/provisioning/alerting/alert_rules.yaml:ro
+      - ./alerting/policy.yaml:/etc/grafana/provisioning/alerting/policy.yaml:ro
+    depends_on:
+      - influxdb
+    restart: always 
+    
+  ds-dualmode-pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ds-dualmode-pipeline:jetson-latest
+    container_name: jetson_ds_dualmode
+    restart: unless-stopped
+    runtime: nvidia
+    network_mode: host
+    ipc: host
+    privileged: true
+    environment:
+      - CUDA_CACHE_DISABLE=0
+      - GST_DEBUG=2
+    devices:
+      - /dev/video0:/dev/video0                      # V4L2 USB camera input
+      - /dev/nvhost-ctrl:/dev/nvhost-ctrl            # NVIDIA hardware engine control
+      - /dev/nvhost-ctrl-gpu:/dev/nvhost-ctrl-gpu    # GPU hardware control
+      - /dev/nvhost-prof-gpu:/dev/nvhost-prof-gpu    # Profiling & telemetry interface
+      - /dev/nvmap:/dev/nvmap                        # Direct NVMM memory allocator access
+      - /dev/nvargus-daemon:/dev/nvargus-daemon      # Jetson Argus CSI camera daemon interface
+    volumes:
+      - ./models:/app/models
+      - /tmp/argus_socket:/tmp/argus_socket          # NVArgus socket mount for MIPI CSI cameras
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]
