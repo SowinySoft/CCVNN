@@ -253,4 +253,26 @@ jobs:
             sleep 60
             ELAPSED=$((ELAPSED + 60))
           done
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Deploy CCVNN Stack to Persistent Host
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/ccvnn-workspace
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
  #ping 100.68.67.78

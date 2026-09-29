@@ -93,21 +93,13 @@ services:
       - "8001:8001"  # gRPC endpoint
       - "8002:8002"  # Metrics endpoint
     volumes:
-      - ./model_repository:/models
-    command: 
+      - ./model:/models
+    command:
       - "tritonserver"
       - "--model-repository=/models"
       - "--strict-model-config=true"
       - "--log-verbose=0"
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-  #
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
       interval: 10s
@@ -120,6 +112,10 @@ services:
           memory: 8G
         reservations:
           memory: 2G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     networks:
       - ccvnn-net
       
