@@ -73,7 +73,7 @@ jobs:
           cd "$STACK_DIR"
 
           cat << 'EOF' > docker-compose.yml
-          version: '3.8'
+          #version: '3.8'
 
           networks:
             ccvnn-net:
@@ -81,17 +81,29 @@ jobs:
 
           services:
             # 1. Triton Inference Server (Model Execution Core)
-            triton-inference-server:
-              image: nvcr.io/nvidia/tritonserver:28.06-py3
-              container_name: ccvnn-triton
-              command: tritonserver --model-repository=/models --allow-grpc=true --allow-http=true --allow-metrics=true
+            triton_server:
+              image: nvcr.io/nvidia/tritonserver:26.08-py3
+              container_name: ccvnn_triton_v20
               ports:
-                - "8000:8000"
-                - "8001:8001"
-                - "8002:8002"
+                - "8000:8000"  # HTTP endpoint
+                - "8001:8001"  # gRPC endpoint
+                - "8002:8002"  # Metrics endpoint
+              volumes:
+                - ./model:/models
+              command:
+                - "tritonserver"
+                - "--model-repository=/models"
+                - "--strict-model-config=true"
+                - "--log-verbose=0"
+              restart: unless-stopped
+              healthcheck:
+                test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+                interval: 10s
+                timeout: 5s
+                retries: 3
+                start_period: 15s
               networks:
                 - ccvnn-net
-              restart: always
 
             # 2. FastAPI gRPC Bridge Service
             fastapi-grpc-bridge:
