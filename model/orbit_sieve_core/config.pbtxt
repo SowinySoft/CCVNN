@@ -1,0 +1,30 @@
+name: "orbit_sieve_core"
+backend: "python"
+max_batch_size: 16
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+output [
+  {
+    name: "final_output"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 5000
+}

@@ -1,0 +1,86 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "title": "CCVNN Edge Triton Telemetry Dashboard",
+  "refresh": "5s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["ccvnn", "triton", "gpu", "edge-ai"],
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total Inference Requests / sec",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(nv_inference_request_success_total[1m]))",
+          "legendFormat": "Req/sec"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Avg Queue Latency (ms)",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "(sum(rate(nv_inference_queue_duration_us[1m])) / sum(rate(nv_inference_request_success_total[1m]))) / 1000",
+          "legendFormat": "Queue Latency (ms)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Avg Compute Latency (ms)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "(sum(rate(nv_inference_compute_infer_duration_us[1m])) / sum(rate(nv_inference_request_success_total[1m]))) / 1000",
+          "legendFormat": "Compute Latency (ms)"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "GPU Memory Used (MB)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "expr": "nv_gpu_memory_used_bytes / 1024 / 1024",
+          "legendFormat": "Memory (MB)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Inference Latency Breakdown (Queue vs Compute)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "(rate(nv_inference_queue_duration_us[1m]) / rate(nv_inference_request_success_total[1m])) / 1000",
+          "legendFormat": "Queue Delay (ms)"
+        },
+        {
+          "expr": "(rate(nv_inference_compute_infer_duration_us[1m]) / rate(nv_inference_request_success_total[1m])) / 1000",
+          "legendFormat": "Compute Duration (ms)"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Dynamic Batching Size Distribution",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum by (model, count) (rate(nv_inference_exec_count[1m]))",
+          "legendFormat": "Model: {{model}} - Exec Count"
+        }
+      ]
+    }
+  ]
+}

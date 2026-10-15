@@ -1,0 +1,25 @@
+# Download GPG key and save to keyrings directory
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+
+# Download the stable deb repository list with key signed-by reference
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb [^ ]*#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg]#' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  
+# Update package index and install nvidia-container-toolkit
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# Configure Docker daemon to use nvidia-ctk runtime
+sudo nvidia-ctk runtime configure --runtime=docker
+
+# Restart Docker daemon to apply changes
+sudo systemctl restart docker
+
+docker run --rm --gpus all ubuntu nvidia-smi
+
+# Copy example file to active override file
+cp docker-compose.override.yml.example docker-compose.override.yml
+
+# Docker Compose automatically merges docker-compose.override.yml into docker-compose.yml
+docker compose up -d --force-recreate

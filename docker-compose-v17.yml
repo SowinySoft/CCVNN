@@ -1,0 +1,81 @@
+services:
+  # Edge PLC Simulator (v14 Industrial Safety Actuation)
+  plc-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.plc            #3.7.4
+    container_name: ccvnn-plc-sim
+    restart: unless-stopped
+    ports:
+      - "5020:5020"
+
+  # MQTT Broker (v14 Hazard Event Messaging)
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mqtt-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    command: >
+      sh -c "echo -e 'listener 1883\nallow_anonymous true' > /mosquitto/config/mosquitto.conf && exec mosquitto -c /mosquitto/config/mosquitto.conf"
+
+  # Core Triton Inference Server (v12 Baseline + v14 Compatibility)
+  triton-server:
+    image: nvcr.io/nvidia/tritonserver:26.08-py3
+    container_name: tritonserver_prod
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # HTTP Inference API
+      - "8001:8001"  # gRPC Inference API
+      - "8002:8002"  # Metrics API
+    volumes:
+      - ./model_repository:/models:ro
+    environment:
+      - OMP_NUM_THREADS=1
+      - OMP_WAIT_POLICY=PASSIVE
+    command:
+      - tritonserver
+      - --model-repository=/models
+      - --model-control-mode=poll
+      - --repository-poll-secs=10
+      - --strict-model-config=false
+      - --log-verbose=0
+      - --exit-on-error=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+
+  # Prometheus Telemetry Collector (v12 Baseline)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_triton
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+    depends_on:
+      triton-server:
+        condition: service_healthy
+
+  # Grafana Observability Dashboard (v12 Baseline)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_triton
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus

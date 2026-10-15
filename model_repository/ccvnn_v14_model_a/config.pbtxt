@@ -1,0 +1,59 @@
+name: "ccvnn_v14_model_a"
+backend: "onnxruntime"
+max_batch_size: 64
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 14 ]
+  }
+]
+
+output [
+  {
+    name: "output_prediction"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+# Low-latency dynamic batching
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32, 64 ]
+  max_queue_delay_microseconds: 200  # Cap queue wait to 0.20 ms
+}
+
+# Match instance count to physical CPU cores (8 workers)
+instance_group [
+  {
+    count: 8
+    kind: KIND_CPU
+  }
+]
+
+# ONNX Runtime Thread Pinning (1 thread per instance prevents thrashing)
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "1" }
+}
+parameters: {
+  key: "inter_op_thread_count"
+  value: { string_value: "1" }
+}
+
+# Zero-data model warmup to eliminate cold-start latency in CI/Production
+model_warmup [
+  {
+    name: "synthetic_warmup"
+    batch_size: 1
+    inputs {
+      key: "input_vector"
+      value {
+        data_type: TYPE_FP32
+        dims: [ 14 ]
+        zero_data: true
+      }
+    }
+  }
+]

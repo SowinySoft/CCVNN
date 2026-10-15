@@ -1,0 +1,37 @@
+name: Deploy to Minikube CI
+
+on:
+  push:
+    branches: 
+      - main
+      - master
+      - 'Cyclotron_Cumulative_Vector'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start Minikube
+        uses: medyagh/setup-minikube@master
+        with:
+          minikube-version: v1.39.0
+          driver: docker
+          memory: 4096mb
+          cpus: 2
+
+      - name: Build Docker image in Minikube
+        run: |
+          minikube image build -t ccvnn-triton-v20:local .
+
+      - name: Apply Kubernetes Manifests
+        run: |
+          kubectl apply -f k8s-gateway.yaml
+          kubectl rollout status deployment/ccvnn-gateway --timeout=120s
+
+      - name: Verify Deployment Pods
+        run: |
+          kubectl get pods
+          kubectl describe deployment ccvnn-gateway

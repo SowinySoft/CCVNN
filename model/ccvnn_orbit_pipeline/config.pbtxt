@@ -1,0 +1,48 @@
+name: "ccvnn_orbit_pipeline"
+platform: "ensemble"
+max_batch_size: 16
+
+input [
+  {
+    name: "PIPELINE_INPUT"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+
+output [
+  {
+    name: "PIPELINE_OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ -1 ]
+  }
+]
+
+ensemble_scheduling {
+  step [
+    {
+      model_name: "ccvnn_v20_backbone"
+      model_version: -1
+      input_map {
+        key: "43"
+        value: "PIPELINE_INPUT"
+      }
+      output_map {
+        key: "hazard_prob"
+        value: "v20_feature_embeddings"
+      }
+    },
+    {
+      model_name: "orbit_sieve_core"
+      model_version: -1
+      input_map {
+        key: "input_0"
+        value: "v20_feature_embeddings"
+      }
+      output_map {
+        key: "final_output"
+        value: "PIPELINE_OUTPUT"
+      }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ccvnn-triton-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ccvnn-triton-v20
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+  - type: Object
+    object:
+      metric:
+        name: v20_model:queue_duration_ms:avg
+      describedObject:
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        name: ccvnn-gateway
+      target:
+        type: Value
+        averageValue: "50"

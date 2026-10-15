@@ -1,0 +1,249 @@
+# 1. Start Triton container mounting the local model repository
+docker run -d --name ccvnn_triton \
+  --shm-size=2g \
+  -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+  -v /home/runner/ccvnn-workspace/model:/models \
+  nvcr.io/nvidia/tritonserver:26.08-py3 \
+  tritonserver --model-repository=/models
+
+# 2. Check startup logs to confirm both models loaded successfully
+docker logs ccvnn_triton -f --tail 50
+
+Want to inspect the exported CSV results or graph latency vs. throughput curves?
+
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    --shape input_0:4,64,64 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+python3 verify_v20_live.py
+===============================
+# Profile ccvnn_v20_backbone
+docker compose run --rm triton-sdk perf_analyzer \
+  -m ccvnn_v20_backbone \
+  -i http \
+  -u localhost:8000 \
+  --shape input_0:4,64,64 \
+  --concurrency-range 1:16:2 \
+  --measurement-interval 5000 \
+  -f /tmp/ccvnn_v20_perf_local.csv
+
+# Profile ccvnn
+docker compose run --rm triton-sdk perf_analyzer \
+  -m ccvnn \
+  -i http \
+  -u localhost:8000 \
+  --shape input_0:4,64,64 \
+  --concurrency-range 1:16:2 \
+  --measurement-interval 5000 \
+  -f /tmp/ccvnn_perf_local.csv
+=================================
+  # Profile ccvnn_v20_backbone
+docker run --rm --net=host -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer -m ccvnn_v20_backbone -i http -u localhost:8000 \
+    --shape input_0:4,64,64 --concurrency-range 1:16:2 \
+    --measurement-interval 5000 -f /tmp/ccvnn_v20_perf.csv
+
+# Profile ccvnn
+docker run --rm --net=host -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer -m ccvnn -i http -u localhost:8000 \
+    --shape input_0:4,64,64 --concurrency-range 1:16:2 \
+    --measurement-interval 5000 -f /tmp/ccvnn_perf.csv
+=====================
+Want to convert ccvnn_v20_backbone to OpenVINO IR with dynamic batch dimension [-1, 4, 64, 64] to eliminate padding overhead?
+
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv
+
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    --shape input_0:4,64,64 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_perf_results.csv
+
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    --shape input_0:4,64,64 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+=================
+start stack:
+docker compose -p ccvnn_prod up -d
+docker compose -p ccvnn_prod down -v
+docker compose -p ccvnn_prod up -d
+
+
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    --shape input_0:4,64,64 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_perf_results.csv
+	
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    --shape input_0:4,64,64 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+	
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+
+========================
+# 1. Benchmark Baseline Model
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_perf_results.csv
+
+# 2. Benchmark V20 Backbone Model
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 5000 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+# 3. Generate Overlay Plot
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+# 1. Benchmark Baseline Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_perf_results.csv
+
+# 2. Benchmark V20 Backbone Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+# 3. Generate Overlay Plot
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+
+docker compose -p ccvnn_prod up -d
+
+# 1. Benchmark Baseline Model (Fast Fixed Window)
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    --concurrency-range 1:6:1 \
+    --forced-measurement-window 5000 \
+    -f /tmp/ccvnn_perf_results.csv
+
+# 2. Benchmark V20 Backbone Model (Fast Fixed Window)
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    --concurrency-range 1:6:1 \
+    --forced-measurement-window 5000 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+# 3. Generate Comparative Plot
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+=====================
+# 1. Benchmark Baseline Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_perf_results.csv
+
+# 2. Benchmark V20 Backbone Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+# 3. Generate Overlay Plot
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+as our OpenVINO IR model XML support variable dynamic batching and shaping when compilied so it it is recommneded move  sweep max_queue_delay_microseconds values using perf_analyzer to optimize latency

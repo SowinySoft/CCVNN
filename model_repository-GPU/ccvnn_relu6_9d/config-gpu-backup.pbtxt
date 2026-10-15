@@ -1,0 +1,30 @@
+name: "ccvnn_relu6_9d"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 9 ]
+  }
+]
+
+output [
+  {
+    name: "output_prediction"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 500
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+  }
+]

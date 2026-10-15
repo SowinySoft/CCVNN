@@ -1,0 +1,43 @@
+name: "vector_vision_general_v1_gpu"
+backend: "onnxruntime"
+max_batch_size: 16
+
+input [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    dims: [ 3, 640, 640 ]
+  }
+]
+
+output [
+  { name: "num_detections", data_type: TYPE_INT32, dims: [ 1 ] },
+  { name: "detection_boxes", data_type: TYPE_FP32, dims: [ 100, 4 ] },
+  { name: "detection_scores", data_type: TYPE_FP32, dims: [ 100 ] },
+  { name: "detection_classes", data_type: TYPE_INT32, dims: [ 100 ] }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 2, 4, 8, 16 ]
+  max_queue_delay_microseconds: 1000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]
+
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator : [
+      {
+        name : "tensorrt"
+        parameters { key: "precision_mode" value: "FP16" }
+        parameters { key: "max_workspace_size_bytes" value: "1073741824" }
+      }
+    ]
+  }
+}

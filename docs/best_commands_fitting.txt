@@ -1,0 +1,700 @@
+python3 triton_benchmark_cli.py -c 16 -b 32 -n 1000
+python3 triton_benchmark_cli.py -u "127.0.0.1:8001" -m "ccvnn_v20_backbone" -c 10 -n 500
+python3 triton_benchmark_cli.py -c 10 -b 16 -n 500 --csv ./benchmark_results.csv
+========================================
+#start stack:
+#docker compose -p ccvnn_prod up -d
+docker compose -p ccvnn_prod down -v
+docker compose -p ccvnn_prod up -d
+docker restart ccvnn_triton_v20
+
+# 1. Benchmark Baseline Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_perf_results.csv
+
+# 2. Benchmark V20 Backbone Model with Real-Time Logging
+docker run --rm --net=host \
+  -v /tmp:/tmp \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  perf_analyzer \
+    -m ccvnn_v20_backbone \
+    -i http \
+    -u localhost:8000 \
+    -v \
+    --concurrency-range 1:16:2 \
+    --measurement-interval 3000 \
+    --stability-percentage 30 \
+    --max-trials 5 \
+    -f /tmp/ccvnn_v20_perf_results.csv
+
+# 3. Generate Overlay Plot
+python3 plot_perf.py /tmp/ccvnn_perf_results.csv /tmp/ccvnn_v20_perf_results.csv
+
+curl -X POST http://localhost:8000/v2/repository/models/ccvnn_v20_backbone/load
+perf_analyzer -m ccvnn_v20_backbone -i gRPC --concurrency-range 1:16:2 --shape input_0:4,64,64
+curl http://localhost:8002/metrics | grep nv_inference_count
+
+perf_analyzer -m ccvnn -i gRPC --concurrency-range 1:16:2 --shape input_0:4,64,64
+perf_analyzer -m ccvnn_v20_backbone -i gRPC --concurrency-range 1:16:2 --shape input_0:4,64,64
+
+perf_analyzer -m ccvnn -i gRPC --concurrency-range 1:16:2 --shape input_0:4,64,64 -f ccvnn_results.csv
+perf_analyzer -m ccvnn_v20_backbone -i gRPC --concurrency-range 1:16:2 --shape input_0:4,64,64 -f ccvnn_v20_results.csv
+
+SLA_MAX_LATENCY_MS=35.0 ./run_benchmarks.sh
+
+dos2unix run_benchmarks.sh plot_perf_breakdown.py
+./run_benchmarks.sh
+
+docker run --rm -it --net=host \
+  -v $(pwd):/workspace \
+  -w /workspace \
+  nvcr.io/nvidia/tritonserver:24.01-py3-sdk \
+  ./run_benchmarks.sh
+  
+  
+  cd /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN
+triton-bench
+
+BATCH_SIZE=16 SLA_MAX_LATENCY_MS=35.0 triton-bench
+
+INPUT_SHAPE="input_0:4,128,128" CONCURRENCY_RANGE="1:9:2" triton-bench
+
+sed -i '/triton-bench()/,/}/d' ~/.bashrc
+cat << 'EOF' >> ~/.bashrc
+
+# Triton Benchmark Runner Wrapper (GPU-aware)
+triton-bench() {
+  local gpu_args=()
+  if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    echo "[INFO] NVIDIA GPU detected. Enabling GPU acceleration (--gpus all)."
+    gpu_args=(--gpus all)
+  else
+    echo "[INFO] NVIDIA GPU driver not detected. Falling back to CPU mode."
+  fi
+
+  docker run --rm -it "${gpu_args[@]}" --net=host \
+    -v "$(pwd)":/workspace \
+    -w /workspace \
+    -e INPUT_SHAPE \
+    -e CONCURRENCY_RANGE \
+    -e BATCH_SIZE \
+    -e SLA_MAX_LATENCY_MS \
+    -e MODEL_BASE \
+    -e MODEL_V20 \
+    nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+    ./run_benchmarks.sh "$@"
+}
+EOF
+
+BATCH_SIZE=16 SLA_MAX_LATENCY_MS=35.0 triton-bench
+INPUT_SHAPE="input_0:4,128,128" CONCURRENCY_RANGE="1:9:2" triton-bench
+
+docker run --rm -it --net=host \
+  -v "$(pwd)":/workspace \
+  -w /workspace \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  ./run_benchmarks.sh
+  
+  
+  python3 -c '
+import re, pathlib
+p = pathlib.Path.home() / ".bashrc"
+text = p.read_text()
+# Remove all triton-bench function blocks and orphaned lines
+text = re.sub(r"(?m)^.*triton-bench[\s\S]*?\n\}", "", text)
+p.write_text(text.strip() + "\n")
+'
+
+Want me to analyze the optimal concurrency saturation point and dynamic batching settings to stabilize C=5 throughput
+
+python3 -c '
+import pathlib
+
+# Search for ccvnn_v20_backbone config.pbtxt
+target_path = pathlib.Path("model/ccvnn_v20_backbone/config.pbtxt")
+
+if not target_path.exists():
+    matches = list(pathlib.Path(".").rglob("ccvnn_v20_backbone/config.pbtxt"))
+    if matches:
+        target_path = matches[0]
+
+if target_path.exists():
+    content = target_path.read_text()
+    
+    dynamic_batch_config = """
+
+# Dynamic Batching & Queue Latency Optimization
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+"""
+    if "dynamic_batching" not in content:
+        content = content.rstrip() + dynamic_batch_config
+        target_path.write_text(content)
+        print(f"[SUCCESS] Dynamic batching block appended to {target_path}")
+    else:
+        print(f"[INFO] dynamic_batching already configured in {target_path}")
+else:
+    print("[ERROR] Could not locate ccvnn_v20_backbone/config.pbtxt file.")
+'
+==============
+name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]  # Batch dimension is managed implicitly by max_batch_size
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]         # Batch dimension is managed implicitly
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+# CPU Threading optimization parameters
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "4" }
+}
+parameters: {
+  key: "execution_mode"
+  value: { string_value: "ORT_SEQUENTIAL" }
+}
+
+=====================
+name: "ccvnn_v20_backbone"
+platform: "onnxruntime_onnx"  # or openvino_onnx / tensorrt_plan
+max_batch_size: 32
+
+# Restrict active execution instances to prevent host CPU core oversubscription
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+# Configure Dynamic Batching to cap queue delays
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+# CPU Threading optimization parameters
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "4" }
+}
+parameters: {
+  key: "execution_mode"
+  value: { string_value: "ORT_SEQUENTIAL" }
+}
+
+=====
+name: "ccvnn"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+# CPU Threading optimization parameters
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "4" }
+}
+parameters: {
+  key: "execution_mode"
+  value: { string_value: "ORT_SEQUENTIAL" }
+}
+
+
+here are both current worked and tested benchmarked two files to review and follow before run above script to update and rerun triton bench again:
+
+1-model\ccvnn_v20_backbone\config.pbtxt:
+
+name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]  # Batch dimension is managed implicitly by max_batch_size
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]         # Batch dimension is managed implicitly
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 5000
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+
+##
+2-model\ccvnn\config.pbtxt:
+
+name: "ccvnn"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 5000
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+
+##suggested hypered param config as follows:
+1-model/ccvnn_v20_backbone/config.pbtxt:
+
+name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]  # Batch dimension is managed implicitly by max_batch_size
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]         # Batch dimension is managed implicitly
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+# CPU Threading optimization parameters
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "4" }
+}
+parameters: {
+  key: "execution_mode"
+  value: { string_value: "ORT_SEQUENTIAL" }
+}
+
+##
+2-model/ccvnn/config.pbtxt:
+name: "ccvnn"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+# CPU Threading optimization parameters
+parameters: {
+  key: "intra_op_thread_count"
+  value: { string_value: "4" }
+}
+parameters: {
+  key: "execution_mode"
+  value: { string_value: "ORT_SEQUENTIAL" }
+}
+ i am waiting you.
+ 
+ python3 -c '
+import pathlib
+
+v20_cfg = """name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters: {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+"""
+
+base_cfg = """name: "ccvnn"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters: {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+"""
+
+def write_config(target_subpath, content):
+    for p in [pathlib.Path(target_subpath), pathlib.Path("model_repository") / target_subpath]:
+        if p.parent.exists():
+            p.write_text(content)
+            print(f"[SUCCESS] Updated {p}")
+            return
+    print(f"[WARNING] Could not locate directory for {target_subpath}")
+
+write_config("ccvnn_v20_backbone/config.pbtxt", v20_cfg)
+write_config("ccvnn/config.pbtxt", base_cfg)
+'
+
+triton-bench
+
+python3 -c '
+import pathlib
+
+v20_cfg = """name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters: {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+"""
+
+base_cfg = """name: "ccvnn"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters: {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+"""
+
+v20_path = pathlib.Path("model/ccvnn_v20_backbone/config.pbtxt")
+base_path = pathlib.Path("model/ccvnn/config.pbtxt")
+
+v20_path.write_text(v20_cfg)
+print(f"[SUCCESS] Direct update applied to {v20_path}")
+
+base_path.write_text(base_cfg)
+print(f"[SUCCESS] Direct update applied to {base_path}")
+'
+
+triton-bench
+
+=
+
+
+
+
+
+
+
+ # Option A: If Triton is running in a Docker container
+docker restart ccvnn_triton_v20
+
+# Option B: If running as a background process, kill and restart tritonserver
+pkill tritonserver
+tritonserver --model-repository=model &
+
+MEASUREMENT_MODE=count_windows REQUEST_COUNT=200 STABILITY_PERCENTAGE=30 triton-bench

@@ -1,0 +1,28 @@
+sed -i '/triton-bench()/,/}/d' ~/.bashrc
+cat << 'EOF' >> ~/.bashrc
+
+# Triton Benchmark Runner Wrapper (GPU-aware)
+triton-bench() {
+  local gpu_args=()
+  if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+    echo "[INFO] NVIDIA GPU detected. Enabling GPU acceleration (--gpus all)."
+    gpu_args=(--gpus all)
+  else
+    echo "[INFO] NVIDIA GPU driver not detected. Falling back to CPU mode."
+  fi
+
+  docker run --rm -it "${gpu_args[@]}" --net=host \
+    -v "$(pwd)":/workspace \
+    -w /workspace \
+    -e INPUT_SHAPE \
+    -e CONCURRENCY_RANGE \
+    -e BATCH_SIZE \
+    -e SLA_MAX_LATENCY_MS \
+    -e MODEL_BASE \
+    -e MODEL_V20 \
+    -e MEASUREMENT_MODE \
+    -e REQUEST_COUNT \
+    nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+    ./run_benchmarks.sh "$@"
+}
+EOF

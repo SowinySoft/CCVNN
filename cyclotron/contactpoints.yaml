@@ -1,0 +1,33 @@
+#/etc/grafana/provisioning/alerting/contactpoints.yaml
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: Edge-Operations-Team
+    receivers:
+      # Slack Notification Channel
+      - type: slack
+        uid: slack-edge-alerts
+        settings:
+          url: "${SLACK_WEBHOOK_URL}"
+          recipient: "#edge-hardware-alerts"
+          title: '{{ template "slack.default.title" . }}'
+          text: |
+            *Alert:* {{ .CommonAnnotations.summary }}
+            *Severity:* {{ .CommonLabels.severity }}
+            *Node:* {{ .CommonLabels.instance }}
+            *Description:* {{ .CommonAnnotations.description }}
+            *Value:* {{ .Values.A }}
+          sendReminder: true
+          frequency: 15m
+
+      # PagerDuty On-Call Escalate
+      - type: pagerduty
+        uid: pagerduty-edge-critical
+        settings:
+          integrationKey: "YOUR_PAGERDUTY_INTEGRATION_KEY_HERE"
+          severity: "critical"
+          class: "Modbus TCP Hardware Fault"
+          component: "WatcherEdgeDaemon"
+          client: "CCVNN Grafana Alerting"
+          clientUrl: "http://grafana:3000/alerting/list"

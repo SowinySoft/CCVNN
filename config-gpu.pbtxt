@@ -1,0 +1,20 @@
+name: "ccvnn_hardswish_12d"
+platform: "onnxruntime_onnx"
+max_batch_size: 16
+
+dynamic_batching {
+  preferred_batch_size: [ 4, 8, 16 ]
+  max_queue_delay_microseconds: 2000
+  default_queue_policy {
+    timeout_action: REJECT
+    default_timeout_microseconds: 15000
+  }
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+    gpus: [ 0 ]
+  }
+]

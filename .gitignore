@@ -1,0 +1,36 @@
+
+*.csv
+*.db
+*.jpeg
+*.jpg
+*.log
+*.mp4
+*.parquet
+*.png
+*.pyc
+*.tar
+*.tar.gz
+*.zip
+.config/
+.git/
+.venv/
+<<<<<<< HEAD
+=======
+>>>>>>> 041380e (chore: ignore colab default runtime directories)
+__pycache__/
+ccvnn-tmp/
+certs/*.csr
+certs/*.key
+certs/*.srl
+data/
+datasets/
+lean-wheels/
+logs/*.jsonl
+ov_ven/
+photos/
+sample_data/
+tritonserver_clients/
+wheels/
+minikube-linux-amd64
+vendor_packages/
+wheels/

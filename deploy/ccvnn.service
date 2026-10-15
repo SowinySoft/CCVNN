@@ -1,0 +1,17 @@
+[Unit]
+Description=CCVNN Industrial Inspection Engine
+After=network.target local-fs.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ccvnn
+ExecStart=/opt/ccvnn/bin/ccvnn_engine --config /opt/ccvnn/config/config.json
+Restart=always
+RestartSec=2s
+LimitMEMLOCK=infinity
+CPUSchedulingPolicy=rr
+CPUSchedulingPriority=99
+
+[Install]
+WantedBy=multi-user.target

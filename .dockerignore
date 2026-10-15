@@ -1,0 +1,12 @@
+tritonserver_clients/
+.venv/
+ov_ven/
+wheels/
+lean-wheels/
+__pycache__/
+*.pyc
+.git/
+ccvnn-tmp/
+*.tar.gz
+*.tar
+*.log

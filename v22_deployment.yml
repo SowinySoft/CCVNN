@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: v22-gateway
+  namespace: ml-inference
+  labels:
+    app: v22-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: v22-gateway
+  template:
+    metadata:
+      labels:
+        app: v22-gateway
+    spec:
+      containers:
+      - name: gateway
+        image: v22-gateway:latest
+        command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--loop", "uvloop"]
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: TRITON_URL
+          value: "triton-inference-service.ml-inference.svc.cluster.local:8001"
+        resources:
+          limits:
+            cpu: "2"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 2

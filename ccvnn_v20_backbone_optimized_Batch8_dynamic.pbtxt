@@ -1,0 +1,165 @@
+name: "ccvnn_v20_backbone"
+backend: "openvino"
+max_batch_size: 32
+
+input [
+  {
+    name: "input_0"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_0"
+    data_type: TYPE_FP32
+    dims: [ 10 ]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [ 16, 32 ]
+  max_queue_delay_microseconds: 1000
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+parameters: {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+parameters: {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters: {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+
+================================
+#!/usr/bin/env bash
+
+TRITON_URL="localhost:8001"
+MODELS_STR="ccvnn ccvnn_v20_backbone"
+BATCH_SIZES_STR="1 4 8 16 32"
+CONCURRENCY_RANGE="1:8:2"
+
+echo "=========================================================="
+echo " Starting Triton Performance Benchmarks for [ -1, 4, 64, 64 ]"
+echo "=========================================================="
+
+docker run --rm --net=host \
+  -v "$(pwd):/workspace" \
+  -w /workspace \
+  -e TRITON_URL="${TRITON_URL}" \
+  -e CONCURRENCY_RANGE="${CONCURRENCY_RANGE}" \
+  -e MODELS_STR="${MODELS_STR}" \
+  -e BATCH_SIZES_STR="${BATCH_SIZES_STR}" \
+  nvcr.io/nvidia/tritonserver:26.08-py3-sdk \
+  bash -c '
+read -r -a MODELS <<< "$MODELS_STR"
+read -r -a BATCH_SIZES <<< "$BATCH_SIZES_STR"
+
+for MODEL in "${MODELS[@]}"; do
+  echo ""
+  echo ">>> Benchmarking Model: ${MODEL}"
+  echo "----------------------------------------------------------"
+
+  for B in "${BATCH_SIZES[@]}"; do
+    OUTPUT_CSV="perf_${MODEL}_batch_${B}.csv"
+    
+    echo "  [+] Testing Request Batch Size: ${B} (Shape: ${B},4,64,64)..."
+    
+    # -b omitted to allow dynamic tensor dimensions via --shape
+    perf_analyzer \
+      -m "${MODEL}" \
+      -i gRPC \
+      -u "${TRITON_URL}" \
+	  -a \
+      -v \
+	  -b ${B}\
+      --shape "input_0:4,64,64" \
+      --concurrency-range "${CONCURRENCY_RANGE}" \
+      --measurement-interval 45000 \
+      --stability-percentage 15 \
+      --max-trials 4 \
+      -f "${OUTPUT_CSV}"
+
+    if [ $? -eq 0 ]; then
+      echo "      [SUCCESS] Report saved to ${OUTPUT_CSV}"
+    else
+      echo "      [ERROR] perf_analyzer failed for ${MODEL} with batch size ${B}."
+    fi
+  done
+done
+'
+
+echo ""
+echo "=========================================================="
+echo " Benchmarking Run Completed."
+echo "=========================================================="
+
+==================================
+Generate a Triton config.pbtxt for ccvnn_v20_backbone optimized for Batch 8 dynamic batching with low queue delay.
+
+name: "ccvnn_v20_backbone"
+platform: "onnxruntime_onnx"  # Replace with "pytorch_libtorch" or "openvino_onnx" if using alternate backend
+max_batch_size: 8
+
+input [
+  {
+    name: "input"
+    data_type: TYPE_FP32
+    dims: [ 4, 64, 64 ]
+  }
+]
+
+output [
+  {
+    name: "output"
+    data_type: TYPE_FP32
+    dims: [ -1 ]  # Adjust to match your model's feature dimension shape
+  }
+]
+
+# Optimized Dynamic Batching Strategy for Low Queue Delay
+dynamic_batching {
+  preferred_batch_size: [ 4, 8 ]
+  max_queue_delay_microseconds: 1500  # 1.5ms max delay to guarantee < 10ms SLA
+}
+
+# CPU Execution Concurrency Optimization
+instance_group [
+  {
+    count: 3  # Matches optimal C3 concurrency sweet spot
+    kind: KIND_CPU
+  }
+]
+
+# Backend Thread Tuning (ONNX Runtime / CPU Optimization)
+optimization {
+  execution_accelerators {
+    cpu_execution_accelerator : [
+      {
+        name : "openvino"  # Optional: switch to OpenVINO provider for enhanced CPU SIMD execution
+      }
+    ]
+  }
+}
+
+parameters: [
+  {
+    key: "intra_op_num_threads"
+    value: { string_value: "4" }
+  },
+  {
+    key: "inter_op_num_threads"
+    value: { string_value: "1" }
+  }
+]

@@ -1,0 +1,58 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2.0
+    container_name: ccvnn-mqtt-broker
+    restart: always
+    ports:
+      - "1883:1883"
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    networks:
+      - ccvnn-net
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t 'healthcheck' -m 'ping' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  modbus-plc-sim:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.plc
+    container_name: ccvnn-plc-sim
+    restart: always
+    ports:
+      - "5020:5020"
+    environment:
+      - PLC_PORT=5020
+    networks:
+      - ccvnn-net
+
+  watcher-engine:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.watcher
+    container_name: ccvnn-watcher-engine
+    restart: always
+    depends_on:
+      mqtt-broker:
+        condition: service_healthy
+      modbus-plc-sim:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MQTT_HOST=ccvnn-mqtt-broker
+      - MQTT_PORT=1883
+      - PLC_HOST=modbus-plc-sim
+      - PLC_PORT=5020
+      - CONFIG_PATH=config/watcher_stress_test_rules.yaml
+    command: python watcher/daemon.py
+    volumes:
+      - ./config:/app/config
+    networks:
+      - ccvnn-net
+
+networks:
+  ccvnn-net:
+    driver: bridge
+ 

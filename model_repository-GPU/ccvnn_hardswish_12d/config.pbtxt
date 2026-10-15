@@ -1,0 +1,30 @@
+name: "ccvnn_hardswish_12d"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 12 ]
+  }
+]
+
+output [
+  {
+    name: "output_prediction"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 500
+}
+
+instance_group [
+  {
+    count: 1
+    kind: KIND_CPU
+  }
+]

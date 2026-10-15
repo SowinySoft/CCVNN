@@ -1,0 +1,15 @@
+Timer unit: 1e-06 s
+
+Total time: 0.335022 s
+File: scripts/profile_v17_target.py
+Function: run_v17_inference_loop at line 9
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+     9                                               @profile
+    10                                               def run_v17_inference_loop(session, input_name, input_buffer, dummy_source, iterations=5000):
+    11                                                   # High-frequency zero-allocation loop using in-place copy
+    12      5001       9414.3      1.9      2.8          for _ in range(iterations):
+    13      5000      23287.8      4.7      7.0              np.copyto(input_buffer, dummy_source)
+    14      5000     302319.6     60.5     90.2              _ = session.run(None, {input_name: input_buffer})
+

@@ -1,0 +1,33 @@
+# Industrial Protocols & Messaging
+paho-mqtt>=1.6.1
+pymodbus==3.7.4
+pyserial>=3.5
+
+# High-Performance Computer Vision & ML Core
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+torch>=2.1.0
+torchaudio>=2.1.0
+torchvision>=0.16.0
+onnxruntime>=1.17.0
+tritonclient[grpc,http]>=2.42.0
+
+# FastAPI Microservice & Dynamic Routes
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.6.0
+python-multipart>=0.0.9
+
+# Data Persistence & Time Series Database
+psycopg2-binary>=2.9.9
+sqlite3-api>=0.1.0
+
+# Hardware Metrics & Diagnostics
+psutil>=5.9.8
+PyYAML>=6.0.1
+requests>=2.31.0
+
+# Testing & Quality Assurance
+pytest>=8.0.0
+gradio
+click>=8.0.0

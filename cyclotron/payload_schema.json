@@ -1,0 +1,14 @@
+{
+  "ts_us": 1727482032100450,
+  "state": 2,
+  "v_cum": {
+    "S_anomaly": 0.8921,
+    "S_cum": 0.8105,
+    "I_severity": 3,
+    "C_debounce": 1.0000,
+    "R_plc": 1,
+    "T_latency_us": 482.5,
+    "H_health": 1.0,
+    "Z_hash": 3735928559
+  }
+}

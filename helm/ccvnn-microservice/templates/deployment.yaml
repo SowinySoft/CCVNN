@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ccvnn-microservice.name" . }}
+  labels:
+    {{- include "ccvnn-microservice.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ccvnn-microservice.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ccvnn-microservice.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: triton-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["tritonserver"]
+          args:
+            - "--model-repository={{ .Values.triton.modelRepository }}"
+            - "--log-verbose={{ .Values.triton.logVerboseLevel }}"
+            - "--exit-on-error={{ .Values.triton.exitOnError }}"
+            - "--grpc-use-ssl=1"
+            - "--grpc-server-cert=/certs/server.crt"
+            - "--grpc-server-key=/certs/server.key"
+            - "--grpc-root-cert=/certs/ca.crt"
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+              protocol: TCP
+          volumeMounts:
+            - name: certs-volume
+              mountPath: /certs
+              readOnly: true
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: certs-volume
+          secret:
+            secretName: {{ include "ccvnn-microservice.name" . }}-tls

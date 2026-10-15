@@ -1,0 +1,103 @@
+name: Triton Performance Benchmark & SLA Verification
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+    inputs:
+      sla_threshold_ms:
+        description: 'Maximum allowable server latency SLA (ms)'
+        required: false
+        default: '50.0'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  benchmark-and-validate:
+    name: Run Triton Benchmarks & Verify SLA
+    runs-on: ubuntu-latest
+    
+    # Official NVIDIA Triton SDK container
+    container:
+      image: nvcr.io/nvidia/tritonserver:26.08-py3-sdk
+
+    env:
+      SLA_MAX_LATENCY_MS: ${{ github.event.inputs.sla_threshold_ms || '50.0' }}
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pandas matplotlib seaborn tabulate
+
+      - name: Make benchmark script executable
+        run: chmod +x run_benchmarks.sh
+
+      - name: Execute benchmark pipeline and SLA check
+        run: ./run_benchmarks.sh
+
+      - name: Generate PR Markdown Report File
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          python3 -c "
+          import pandas as pd
+          import os
+
+          csv_path = 'combined_latency_summary_capped.csv'
+          sla = os.environ.get('SLA_MAX_LATENCY_MS', '50.0')
+
+          if os.path.exists(csv_path):
+              df = pd.read_csv(csv_path)
+              md_table = df.to_markdown(index=False)
+              
+              # Determine pass/fail indicator
+              max_latency = max(df['Baseline_Total_Server_ms'].max(), df['V20_Total_Server_ms'].max())
+              status_badge = '🟢 **PASSED**' if max_latency <= float(sla) else '🔴 **FAILED (SLA Breached)**'
+
+              comment_body = f'''## 📊 Triton Performance Benchmark Results
+
+          **Status:** {status_badge}  
+          **SLA Threshold:** \`{sla} ms\`  
+          **Max Measured Latency:** \`{max_latency:.2f} ms\`
+
+          ### Latency Breakdown Summary (ms & % Delta)
+          {md_table}
+
+          > *Note: Full high-res PNG/PDF breakdown charts and raw CSV files are attached to this workflow run's artifacts.*
+          '''
+              with open('pr_comment.md', 'w') as f:
+                  f.write(comment_body)
+          else:
+              with open('pr_comment.md', 'w') as f:
+                  f.write('### ⚠️ Triton Benchmark Failed\n\nNo summary CSV file was produced by the pipeline.')
+          "
+
+      - name: Post or Update Sticky PR Comment
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: triton-benchmark-results
+          path: pr_comment.md
+
+      - name: Append to GitHub Actions Job Summary
+        if: always()
+        run: |
+          if [ -f pr_comment.md ]; then
+            cat pr_comment.md >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload performance artifacts (Charts & CSV summaries)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triton-performance-results
+          path: |
+            *.csv
+            *.png
+            *.pdf
+          retention-days: 14

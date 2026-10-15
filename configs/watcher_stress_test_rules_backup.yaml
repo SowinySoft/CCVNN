@@ -1,0 +1,21 @@
+rules:
+  cam_01:
+    persistence_threshold: 2
+    heartbeat_interval: 10
+    plc_register: 40001
+    mqtt_topic: "factory/cam_01/hazard"
+  cam_02:
+    persistence_threshold: 2
+    heartbeat_interval: 10
+    plc_register: 40002
+    mqtt_topic: "factory/cam_02/hazard"
+  cam_03:
+    persistence_threshold: 3
+    heartbeat_interval: 15
+    plc_register: 40003
+    mqtt_topic: "factory/cam_03/hazard"
+  cam_04:
+    persistence_threshold: 2
+    heartbeat_interval: 10
+    plc_register: 40004
+    mqtt_topic: "factory/cam_04/hazard"

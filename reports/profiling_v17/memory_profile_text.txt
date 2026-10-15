@@ -1,0 +1,29 @@
+Filename: /mnt/c/Users/Sowin/Downloads/DDVNN-HOME/CCVNN/scripts/profile_v17_target.py
+
+Line #    Mem usage    Increment  Occurrences   Line Contents
+=============================================================
+    21     54.0 MiB     54.0 MiB           1   @mem_profile
+    22                                         def main():
+    23     54.0 MiB      0.0 MiB           1       model_path = "ccvnn_v17_backbone_int8.onnx"
+    24     54.0 MiB      0.0 MiB           1       if not os.path.exists(model_path):
+    25                                                 print(f"❌ Model file {model_path} not found.")
+    26                                                 return
+    27                                         
+    28                                             # Configure session for single-threaded low latency
+    29     54.0 MiB      0.0 MiB           1       opts = ort.SessionOptions()
+    30     54.0 MiB      0.0 MiB           1       opts.intra_op_num_threads = 1
+    31     54.0 MiB      0.0 MiB           1       opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+    32                                         
+    33     62.1 MiB      8.2 MiB           1       session = ort.InferenceSession(model_path, opts, providers=["CPUExecutionProvider"])
+    34     62.1 MiB      0.0 MiB           1       input_name = session.get_inputs()[0].name
+    35                                         
+    36                                             # Pre-allocate contiguous zero-copy memory buffer
+    37     62.1 MiB      0.0 MiB           1       input_buffer = np.empty((1, 17), dtype=np.float32)
+    38     67.3 MiB      5.1 MiB           1       dummy_source = np.random.randn(1, 17).astype(np.float32)
+    39                                         
+    40                                             # Execute zero-copy profiling loop
+    41     67.7 MiB      0.5 MiB           1       run_v17_inference_loop(session, input_name, input_buffer, dummy_source)
+
+
+mprof: Sampling memory every 0.01s
+running new process

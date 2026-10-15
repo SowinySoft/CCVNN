@@ -1,0 +1,69 @@
+name: "yolov8n_openvino"
+backend: "openvino"
+max_batch_size: 0
+
+input [
+  {
+    name: "x.1"
+    data_type: TYPE_FP32
+    dims: [ -1, 3, -1, -1 ]
+  }
+]
+
+output [
+  {
+    name: "output0"
+    data_type: TYPE_FP32
+    dims: [ -1, 84, -1 ]
+  }
+]
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+
+parameters {
+  key: "INFERENCE_NUM_THREADS"
+  value: { string_value: "4" }
+}
+parameters {
+  key: "CPU_THROUGHPUT_STREAMS"
+  value: { string_value: "2" }
+}
+parameters {
+  key: "ENABLE_CPU_PINNING"
+  value: { string_value: "NO" }
+}
+parameters {
+  key: "PERFORMANCE_HINT"
+  value: { string_value: "THROUGHPUT" }
+}
+
+#parameters: {
+#  key: "intra_op_thread_count"
+#  value: { string_value: "4" }
+#}
+
+#parameters: {
+#  key: "execution_mode"
+#  value: { string_value: "EXECUTION_PARALLEL" }
+#}
+
+
+model_warmup [
+  {
+    name: "yolo_warmup_openvino"
+    count: 1
+    inputs {
+      key: "x.1"
+      value {
+        data_type: TYPE_FP32
+        dims: [ 1, 3, 640, 640 ]
+        zero_data: true
+      }
+    }
+  }
+]

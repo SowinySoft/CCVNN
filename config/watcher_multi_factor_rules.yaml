@@ -1,0 +1,41 @@
+version: "1.0"
+rules_engine:
+  eval_interval_ms: 20
+  default_action: "LOG_ONLY"
+
+rules:
+  - id: "RULE_001_ZONE_BREACH_HIGH_HAZARD"
+    name: "Personnel in Hazard Zone during High Telemetry Hazard"
+    enabled: true
+    condition:
+      logic: "AND"
+      telemetry:
+        min_hazard_score: 0.75
+      vision:
+        target_classes: ["person", "unauthorized_vehicle"]
+        min_confidence: 0.60
+        min_entity_count: 1
+    action:
+      plc_actuation:
+        register_address: 40001
+        value: 1
+      mqtt_alert:
+        topic: "ccvnn/alerts/critical"
+        severity: "CRITICAL"
+
+  - id: "RULE_002_SPATIAL_OBJECT_WARNING"
+    name: "General Entity Detection Warning"
+    enabled: true
+    condition:
+      logic: "OR"
+      vision:
+        target_classes: ["fire_smoke", "spill"]
+        min_confidence: 0.50
+        min_entity_count: 1
+    action:
+      plc_actuation:
+        register_address: 40002
+        value: 1
+      mqtt_alert:
+        topic: "ccvnn/alerts/warning"
+        severity: "WARNING"

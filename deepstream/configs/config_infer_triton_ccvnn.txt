@@ -1,0 +1,4 @@
+[property]
+gpu-id=0
+net-scale-factor=1.0
+model-engine-file=model_repository/ccvnn/1/model.onnx

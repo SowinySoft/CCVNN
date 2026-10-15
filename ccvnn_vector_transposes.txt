@@ -1,0 +1,33 @@
+================================================================================
+CCVNN V17 & CUMULATIVE ACTUATION VECTOR TRANSPOSES
+================================================================================
+
+1. Factorized Vector Formula v_i(t):
+v_i(t) = [ r_i/h, 
+           c_i/w, 
+           hex_C/255, 
+           hex_L/255, 
+           hex_U/255, 
+           hex_R/255, 
+           hex_D/255, 
+           c_type, 
+           (log2(h) + log2(w))/20, 
+           R_mean, 
+           G_mean, 
+           B_mean, 
+           sigma_Y^2, 
+           B_lux, 
+           C_ratio, 
+           ||G||, 
+           R_specular ]^T
+
+2. Cumulative Actuation Vector Formula V_cum(t):
+V_cum(t) = [ S_anomaly, 
+             S_cum, 
+             I_severity, 
+             C_debounce, 
+             R_PLC, 
+             T_latency, 
+             H_health, 
+             Z_hash ]^T
+================================================================================

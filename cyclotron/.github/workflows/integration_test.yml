@@ -1,0 +1,97 @@
+name: WatcherEdgeDaemon Integration & Chaos Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  integration-chaos-test:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies & C++ Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libopencv-dev \
+            libmodbus-dev \
+            libomp-dev \
+            libgtest-dev
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pymodbus==3.5.2 asyncio
+
+      - name: Build C++ Binaries and Test Suite
+        run: |
+          mkdir build && cd build
+          cmake -GNinja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DBUILD_TESTS=ON ..
+          ninja
+
+      - name: Start Mock Modbus TCP Server (Port 5022)
+        run: |
+          python3 -c "
+          import asyncio
+          from pymodbus.server import StartAsyncTcpServer
+          from pymodbus.datastore import ModbusSequentialDataBlock, ModbusSlaveContext, ModbusServerContext
+
+          store = ModbusSlaveContext(hr=ModbusSequentialDataBlock(0, [0]*100))
+          context = ModbusServerContext(slaves=store, single=True)
+
+          async def run():
+              print('Mock Modbus TCP Server listening on 127.0.0.1:5022...')
+              await StartAsyncTcpServer(context, address=('127.0.0.1', 5022))
+
+          asyncio.run(run())
+          " &
+          echo $! > /tmp/mock_modbus.pid
+          sleep 2
+
+      - name: Start Modbus Chaos Proxy (Port 5020 -> 5022)
+        run: |
+          python3 scripts/modbus_chaos_proxy.py \
+            --listen-port 5020 \
+            --target-host 127.0.0.1 \
+            --target-port 5022 \
+            --failure-rate 0.40 \
+            --mode timeout &
+          echo $! > /tmp/chaos_proxy.pid
+          sleep 1
+
+      - name: Run Integration Tests under Chaos Fault Injection
+        env:
+          MODBUS_HOST: "127.0.0.1"
+          MODBUS_PORT: "5020"
+        run: |
+          cd build
+          ./test_circuit_breaker --gtest_output=xml:test_results.xml
+
+      - name: Stop Background Proxies
+        if: always()
+        run: |
+          if [ -f /tmp/chaos_proxy.pid ]; then kill $(cat /tmp/chaos_proxy.pid) || true; fi
+          if [ -f /tmp/mock_modbus.pid ]; then kill $(cat /tmp/mock_modbus.pid) || true; fi
+
+      - name: Publish Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gtest-results
+          path: build/test_results.xml

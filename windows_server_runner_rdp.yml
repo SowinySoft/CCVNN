@@ -1,0 +1,465 @@
+name: CCVNN Production Suite - Azure Windows 11/Server Tailscale RDP & Microservices
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_hours:
+        description: 'Duration to keep session active (in hours, max 6)'
+        required: false
+        default: '6'
+      enable_ssh:
+        description: 'Enable Tailscale SSH access'
+        type: boolean
+        required: false
+        default: true
+      enable_exit_node:
+        description: 'Advertise as Tailscale Exit Node'
+        type: boolean
+        required: false
+        default: true
+      deploy_ccvnn_services:
+        description: 'Spin up CCVNN 8-Service Stack (Triton, gRPC Bridge, Timescale, etc.)'
+        type: boolean
+        required: false
+        default: true
+      target_repo_url:
+        description: 'GitHub repository URL to clone onto Desktop (leave blank for current repo)'
+        required: false
+        default: ''
+      advertise_routes:
+        description: 'Subnet routes to advertise (e.g. 10.0.0.0/24, 192.168.1.0/24)'
+        required: false
+        default: ''
+
+jobs:
+  rdp-session:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Enable Remote Desktop & OpenSSH
+        shell: powershell
+        run: |
+          # Enable Remote Desktop in Registry
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          
+          # Enable Firewall Rules for RDP, OpenSSH, and CCVNN Stack
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          
+          # Require NLA Authentication
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1
+
+          # Ensure Windows Capability for OpenSSH Server is active
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+
+      - name: Set Admin Account Password
+        shell: powershell
+        run: |
+          $Pass = "${{ secrets.RDP_PASSWORD }}"
+          if (-not $Pass) {
+            $Pass = "AzureRDP2026!SecurePass"
+          }
+          $SecurePassword = ConvertTo-SecureString $Pass -AsPlainText -Force
+          $User = Get-LocalUser -Name "runneradmin"
+          $User | Set-LocalUser -Password $SecurePassword
+
+      - name: Install Developer Tools & Docker Engine
+        shell: powershell
+        run: |
+          Write-Host "Installing Git, Python, VS Code, Docker, and OpenSSL via Chocolatey..." -ForegroundColor Cyan
+          
+          choco install git.install python3 vscode docker-desktop openssl -y --no-progress
+          
+          # Reload machine and user environment variables into active PowerShell session
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+      - name: Pre-Clone Target Repository to Desktop
+        shell: powershell
+        run: |
+          $RepoUrl = "${{ github.event.inputs.target_repo_url }}"
+          if (-not $RepoUrl) {
+            $RepoUrl = "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@[github.com/$](https://github.com/$){{ github.repository }}.git"
+          }
+          
+          $DesktopPath = "C:\Users\runneradmin\Desktop"
+          if (-not (Test-Path $DesktopPath)) {
+            $DesktopPath = [System.IO.Path]::Combine($env:USERPROFILE, "Desktop")
+            New-Item -ItemType Directory -Path $DesktopPath -Force | Out-Null
+          }
+          
+          Set-Location -Path $DesktopPath
+          Write-Host "Cloning CCVNN workspace repository to Desktop..." -ForegroundColor Cyan
+          git clone $RepoUrl
+          Write-Host "Repository cloned successfully onto Desktop." -ForegroundColor Green
+
+      - name: Generate & Launch CCVNN 8-Service Stack
+        if: ${{ github.event.inputs.deploy_ccvnn_services == 'true' }}
+        shell: powershell
+        run: |
+          Write-Host "Configuring CCVNN 8-Service Microservices Stack..." -ForegroundColor Cyan
+          
+          $CCVNNPath = "C:\Users\runneradmin\Desktop\ccvnn-stack"
+          New-Item -ItemType Directory -Path $CCVNNPath -Force | Out-Null
+          Set-Location -Path $CCVNNPath
+
+          # Generate production-ready Docker Compose manifest for CCVNN microservices
+          $ComposeContent = @"
+          version: '3.8'
+
+          networks:
+            ccvnn-net:
+              driver: bridge
+
+        services:
+          # 1. PLC Modbus Hardware Simulator
+          plc-sim:
+            build:
+              context: .
+              dockerfile: docker/Dockerfile.plc
+            container_name: ccvnn-plc-sim
+            restart: unless-stopped
+            environment:
+              - PLC_PORT=5020
+              - PYTHONPATH=/app
+            working_dir: /app
+            command:
+              - python3
+              - -m
+              - watcher.simulators.modbus_server
+              - --host
+              - "0.0.0.0"
+              - --port
+              - "5020"
+            ports:
+              - "5020:5020"
+            healthcheck:
+              test:
+                [
+                  "CMD",
+                  "python3",
+                  "-c",
+                  "import socket; s=socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(2); s.connect(('127.0.0.1', 5020)); s.close()"
+                ]
+              interval: 5s
+              timeout: 5s
+              retries: 24
+              start_period: 30s
+            networks:
+              - ccvnn-net
+
+          # 2. MQTT Broker (v14/v17 Hazard Event Messaging)
+          mqtt-broker:
+            image: eclipse-mosquitto:2.0
+            container_name: ccvnn-mqtt-broker
+            restart: unless-stopped
+            ports:
+              - "1883:1883"
+              - "9001:9001"
+            command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+            healthcheck:
+              test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -t 'healthcheck' -m 'ping' || exit 1"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+              start_period: 5s
+            networks:
+              - ccvnn-net
+        
+          triton_server:
+            image: nvcr.io/nvidia/tritonserver:26.08-py3
+            container_name: ccvnn_triton_v20
+            ports:
+              - "8000:8000"  # HTTP endpoint
+              - "8001:8001"  # gRPC endpoint
+              - "8002:8002"  # Metrics endpoint
+            volumes:
+              - ./model:/models
+            command:
+              - "tritonserver"
+              - "--model-repository=/models"
+              - "--strict-model-config=true"
+              - "--log-verbose=0"
+            restart: unless-stopped
+            healthcheck:
+              test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+              interval: 10s
+              timeout: 5s
+              retries: 3
+              start_period: 15s
+            #deploy:
+              #resources:
+                #limits:
+                  #memory: 8G
+                #reservations:
+                  #memory: 2G
+                  #devices:
+                    #- driver: nvidia
+                      #count: all
+                      #capabilities: [gpu]
+            networks:
+              - ccvnn-net
+              
+          # 4. TimescaleDB / PostgreSQL Telemetry & Buffer Backing Store
+          ccvnn-db:
+            image: timescale/timescaledb:latest-pg15
+            container_name: ccvnn-db
+            restart: unless-stopped
+            environment:
+              POSTGRES_DB: ccvnn_db
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: postgrespassword
+            ports:
+              - "5433:5432"
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -U postgres -d ccvnn_db || exit 1"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+              start_period: 10s
+            volumes:
+              - ccvnn_pgdata:/var/lib/postgresql/data
+              - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+            networks:
+              - ccvnn-net
+
+          # 5. Watcher Governor & Edge Integration Service
+          watcher-engine:
+            build:
+              context: .
+              dockerfile: docker/Dockerfile.watcher
+            container_name: ccvnn-watcher-engine
+            restart: unless-stopped
+            depends_on:
+              mqtt-broker:
+                condition: service_healthy
+              ccvnn-db:
+                condition: service_healthy
+              plc-sim:
+                condition: service_healthy
+              triton_server:
+                condition: service_healthy
+            environment:
+              - PYTHONUNBUFFERED=1
+              - MQTT_BROKER=mqtt-broker
+              - MQTT_HOST=mqtt-broker
+              - MQTT_PORT=1883
+              - PLC_IP=plc-sim
+              - PLC_HOST=plc-sim
+              - PLC_PORT=5020
+              - TRITON_HOST=triton_server
+              - TRITON_PORT=8001
+              - DB_HOST=ccvnn-db
+              - DB_PORT=5432
+              - DB_NAME=ccvnn_db
+              - DB_USER=postgres
+              - DB_PASS=postgrespassword
+              - DB_PATH=/app/data/watcher_buffer.db
+              - CONFIG_PATH=config/watcher_stress_test_rules.yaml
+              - PYTHONPATH=/app
+            command: python watcher/daemon.py
+            volumes:
+              - ./config:/app/config
+              - ccvnn-data:/app/data
+            networks:
+              - ccvnn-net
+
+          # 6. Prometheus Telemetry Collector (v12 Baseline)
+          prometheus:
+            image: prom/prometheus:latest
+            container_name: ccvnn-prometheus
+            restart: unless-stopped
+            ports:
+              - "9090:9090"
+            volumes:
+              - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+              - ./prometheus_rules.yml:/etc/prometheus/prometheus_rules.yml:ro
+            depends_on:
+              triton_server:
+                condition: service_healthy
+            networks:
+              - ccvnn-net
+
+          # 7. Grafana Observability Dashboard (v12 Baseline)
+          grafana:
+            image: grafana/grafana:latest
+            container_name: ccvnn-grafana
+            restart: unless-stopped
+            ports:
+              - "3000:3000"
+            environment:
+              - GF_SECURITY_ADMIN_PASSWORD=admin
+            depends_on:
+              - prometheus
+            networks:
+              - ccvnn-net
+        # 8. FastAPI gRPC Bridge & External API Service (MUST BE UNDER SERVICES)
+          grpc-app:
+            build:
+              context: .
+              dockerfile: docker/Dockerfile.grpc_app
+            container_name: ccvnn-grpc-app
+            restart: unless-stopped
+            depends_on:
+              triton_server:
+                condition: service_healthy
+              ccvnn-db:
+                condition: service_healthy
+            environment:
+              - PYTHONUNBUFFERED=1
+              - TRITON_HOST=triton_server
+              - TRITON_PORT=8001
+              - DB_HOST=ccvnn-db
+              - DB_PORT=5432
+              - DB_NAME=ccvnn_db
+              - DB_USER=postgres
+              - DB_PASS=postgrespassword
+            ports:
+              - "8080:8080"
+            healthcheck:
+              test: ["CMD-SHELL", "curl -f http://localhost:8080/docs || exit 1"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+              start_period: 10s
+            networks:
+              - ccvnn-net
+            
+        networks:
+          ccvnn-net:
+            driver: bridge
+
+        volumes:
+          ccvnn_pgdata:
+          ccvnn-data:
+
+          "@
+
+          $ComposeContent | Out-File -FilePath "$CCVNNPath\docker-compose.yml" -Encoding utf8
+          
+          Write-Host "Spinning up all 8 CCVNN containerized components..." -ForegroundColor Cyan
+          docker compose -f "$CCVNNPath\docker-compose.yml" up -d
+          
+          Start-Sleep -Seconds 10
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      - name: Download & Install Tailscale
+        shell: powershell
+        run: |
+          $InstallerPath = "$env:TEMP\tailscale-setup.exe"
+          Invoke-WebRequest -Uri "[https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe](https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe)" -OutFile $InstallerPath
+          
+          Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait
+          
+          $env:Path += ";C:\Program Files\Tailscale"
+          [Environment]::SetEnvironmentVariable("Path", $env:Path, [EnvironmentVariableTarget]::Machine)
+
+      - name: Enable IP Forwarding for Subnet Routing & Exit Node
+        shell: powershell
+        run: |
+          Get-NetIPInterface -AddressFamily IPv4 | ForEach-Object {
+            Set-NetIPInterface -InterfaceIndex $_.InterfaceIndex -Forwarding Enabled
+          }
+
+      - name: Connect to Tailscale Tailnet
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          if (-not "${{ secrets.TAILSCALE_AUTHKEY }}") {
+            Write-Error "TAILSCALE_AUTHKEY secret is missing in repository settings."
+            exit 1
+          }
+
+          $AuthKey = "${{ secrets.TAILSCALE_AUTHKEY }}"
+          $EnableSSH = "${{ github.event.inputs.enable_ssh }}"
+          $EnableExitNode = "${{ github.event.inputs.enable_exit_node }}"
+          $SubnetRoutes = "${{ github.event.inputs.advertise_routes }}"
+
+          $ArgsList = @(
+            "up",
+            "--authkey=$AuthKey",
+            "--hostname=github-runner-ccvnn",
+            "--tag=tag:github-runner",
+            "--accept-routes=true"
+          )
+
+          if ($EnableSSH -eq 'true') {
+            $ArgsList += "--ssh"
+          }
+
+          if ($EnableExitNode -eq 'true') {
+            $ArgsList += "--advertise-exit-node"
+          }
+
+          if ($SubnetRoutes -ne '') {
+            $ArgsList += "--advertise-routes=$SubnetRoutes"
+          }
+
+          & "C:\Program Files\Tailscale\tailscale.exe" @ArgsList
+
+      - name: Display Connection & CCVNN Stack Information
+        shell: powershell
+        run: |
+          $env:Path += ";C:\Program Files\Tailscale"
+          
+          $TailscaleIP = (& "C:\Program Files\Tailscale\tailscale.exe" ip -4).Trim()
+          
+          Write-Host ""
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host "   CCVNN PRODUCTION SUITE & TAILSCALE RDP IS ACTIVE"     -ForegroundColor Green
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host " Node Tailscale IP : $TailscaleIP"                         -ForegroundColor Yellow
+          Write-Host " Hostname          : github-runner-ccvnn"                  -ForegroundColor Yellow
+          Write-Host " RDP Endpoint      : $TailscaleIP:3389"                   -ForegroundColor Yellow
+          Write-Host " SSH Access        : ssh runneradmin@$TailscaleIP"         -ForegroundColor Yellow
+          Write-Host "---------------------------------------------------------" -ForegroundColor Green
+          Write-Host " CCVNN 8-SERVICE STACK ENDPOINTS (via Tailscale mesh):"   -ForegroundColor Cyan
+          Write-Host "  1. Triton HTTP API   : http://$TailscaleIP:8000"         -ForegroundColor White
+          Write-Host "  2. Triton gRPC API   : $TailscaleIP:8001"                -ForegroundColor White
+          Write-Host "  3. FastAPI Bridge    : http://$TailscaleIP:8080"         -ForegroundColor White
+          Write-Host "  4. TimescaleDB       : $TailscaleIP:5432"                -ForegroundColor White
+          Write-Host "  5. MQTT Broker       : $TailscaleIP:1883"                -ForegroundColor White
+          Write-Host "  6. PLC Simulator     : $TailscaleIP:502"                 -ForegroundColor White
+          Write-Host "  7. Prometheus UI     : http://$TailscaleIP:9090"         -ForegroundColor White
+          Write-Host "  8. Grafana Dashboard : http://$TailscaleIP:3000 (admin/ccvnn_admin)" -ForegroundColor White
+          Write-Host "=========================================================" -ForegroundColor Green
+          Write-Host ""
+
+      - name: Maintain Active Session Loop
+        shell: powershell
+        run: |
+          $Hours = [int]"${{ github.event.inputs.session_hours }}"
+          $TotalSeconds = $Hours * 3600
+          $Elapsed = 0
+          
+          Write-Host "Session running for $Hours hour(s). Do not cancel the workflow."
+          while ($Elapsed -lt $TotalSeconds) {
+            Start-Sleep -Seconds 60
+            $Elapsed += 60
+          }
+          done
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          
+      - name: Deploy CCVNN Stack to Persistent Host
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/ccvnn-workspace
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
+ #ping 100.68.67.78

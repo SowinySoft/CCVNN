@@ -1,0 +1,23 @@
+groups:
+  - name: v20_triton_performance_rules
+    rules:
+      # Calculate average compute inference duration per request in milliseconds
+      - record: v20_model:compute_duration_ms:avg
+        expr: |
+          rate(nv_inference_compute_infer_duration_us[1m]) 
+          / rate(nv_inference_request_success[1m]) / 1000
+
+      # Calculate queue waiting time per request in milliseconds
+      - record: v20_model:queue_duration_ms:avg
+        expr: |
+          rate(nv_inference_queue_duration_us[1m]) 
+          / rate(nv_inference_request_success[1m]) / 1000
+
+      # Alert when CPU queuing delay exceeds 50ms threshold
+      - alert: V20HighQueueLatency
+        expr: v20_model:queue_duration_ms:avg > 50
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Triton CPU batch coalescer queue backlog detected (>50ms wait)."

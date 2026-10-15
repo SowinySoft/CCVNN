@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ccvnn-triton-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ccvnn-triton
+  template:
+    metadata:
+      labels:
+        app: ccvnn-triton
+    spec:
+      containers:
+      - name: ccvnn-triton
+        image: ccvnn-triton-v20:local
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
