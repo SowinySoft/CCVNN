@@ -2,7 +2,7 @@ name: Deploy to Minikube CI
 
 on:
   push:
-    branches: 
+    branches:
       - main
       - master
       - 'Cyclotron_Cumulative_Vector'
@@ -17,7 +17,6 @@ jobs:
       - name: Start Minikube
         uses: medyagh/setup-minikube@master
         with:
-          minikube-version: v1.39.0
           driver: docker
           memory: 4096mb
           cpus: 2
