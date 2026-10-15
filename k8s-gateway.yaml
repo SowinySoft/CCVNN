@@ -16,8 +16,8 @@ spec:
     spec:
       containers:
       - name: gateway
-        image: docker.io/library/ccvnn-triton-v20:local
-        imagePullPolicy: IfNotPresent
+        image: ccvnn-triton-v20:local
+        imagePullPolicy: Never
         ports:
         - containerPort: 8080
         env:
