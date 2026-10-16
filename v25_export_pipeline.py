@@ -192,9 +192,15 @@ class CCVNN2DVisionPipeline(nn.Module):
 # ==============================================================================
 
 def write_triton_repository() -> None:
-    if os.path.exists("model_repository"):
-        shutil.rmtree("model_repository")
-        print("🧹 Cleaned legacy model_repository.")
+    os.makedirs("model_repository", exist_ok=True)
+    
+    # Non-destructive cleaning: Only clean V25 specific subdirectories
+    for model_name in ["ccvnn_v25_backbone", "ccvnn"]:
+        model_path = os.path.join("model_repository", model_name)
+        if os.path.exists(model_path):
+            shutil.rmtree(model_path)
+            print(f"🧹 Cleaned legacy model subdirectory: {model_name}.")
+        os.makedirs(os.path.join(model_path, "1"), exist_ok=True)
 
     backbone_config = """name: "ccvnn_v25_backbone"
 backend: "openvino"
@@ -261,8 +267,6 @@ instance_group [
   }
 ]
 """
-    os.makedirs("model_repository/ccvnn_v25_backbone/1", exist_ok=True)
-    os.makedirs("model_repository/ccvnn/1", exist_ok=True)
     
     with open("model_repository/ccvnn_v25_backbone/config.pbtxt", "w") as f:
         f.write(backbone_config)
@@ -323,7 +327,7 @@ def export_and_verify_v25() -> None:
     # ==========================================================================
     print("\n==============================================================")
     print(" RUNNING FULLY DYNAMIC OPEN_VINO RUNTIME VALIDATION")
-    print("==============================================================")
+    print("==============================================================l")
     core = ov.Core()
     test_cases = [(1, 32, 32), (4, 64, 64), (16, 128, 128), (32, 96, 96)]
 
