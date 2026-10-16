@@ -1,0 +1,31 @@
+name: "ccvnn_v14_model_c"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 14 ]
+  }
+]
+
+output [
+  {
+    name: "output_prediction"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+dynamic_batching {
+  max_queue_delay_microseconds: 2000
+  preferred_batch_size: [ 8, 16, 32 ]
+}
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]

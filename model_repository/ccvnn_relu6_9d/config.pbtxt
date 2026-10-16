@@ -1,0 +1,43 @@
+name: "ccvnn_relu6_9d"
+platform: "onnxruntime_onnx"
+max_batch_size: 64
+
+input [
+  {
+    name: "input_vector"
+    data_type: TYPE_FP32
+    dims: [ 9 ]
+  }
+]
+
+output [
+  {
+    name: "output_coords"
+    data_type: TYPE_FP32
+    dims: [ 2 ]
+  }
+]
+
+# Enable Dynamic Batching
+dynamic_batching {
+  max_queue_delay_microseconds: 2000
+  preferred_batch_size: [ 8, 16, 32 ]
+}
+
+# Optimize CPU instance threads
+instance_group [
+  {
+    count: 2
+    kind: KIND_CPU
+  }
+]
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator : [
+      {
+        name : "tensorrt"
+        parameters { key: "precision_mode" value: "INT8" }
+      }
+    ]
+  }
+}
