@@ -70,18 +70,7 @@ jobs:
             if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
               MQTT_READY=true
             fi
-            if python3 - <<'PY'
-from pymodbus.client import ModbusTcpClient
-client = ModbusTcpClient("127.0.0.1", port=5020, timeout=2)
-try:
-    if not client.connect():
-        raise SystemExit(1)
-    response = client.read_holding_registers(address=0, count=1, slave=1)
-    raise SystemExit(0 if response is not None and not response.isError() else 1)
-finally:
-    client.close()
-PY
-            then
+            if python3 scripts/check_plc_health.py; then
               PLC_READY=true
             fi
             if [ "$TRITON_READY" = true ] && [ "$MQTT_READY" = true ] && [ "$PLC_READY" = true ]; then
