@@ -85,15 +85,15 @@ jobs:
 
       - name: Run Synthetic Ingestion & Stream Test
         run: |
-          python3 scripts/triton_client_stream.py
+          PYTHONPATH=. python3 scripts/triton_client_stream.py
 
       - name: Run End-to-End Containerized Test Pipeline
         run: |
-          python3 scripts/test_e2e_containerized.py
+          PYTHONPATH=. python3 scripts/test_e2e_containerized.py
 
       - name: Check Latency SLA Gate
         run: |
-          python3 scripts/check_latency_gate.py
+          PYTHONPATH=. python3 scripts/check_latency_gate.py
 
       - name: Debug Logs on Failure
         if: failure()
