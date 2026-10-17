@@ -1,3 +1,5 @@
+# 1. Implement Geometric Gate Router (Rotational Distribution & Collection Gates)
+cat << 'EOF' > geometric/gates.py
 name: CCVNN Triton Microservice CI/CD
 
 on:
@@ -17,7 +19,6 @@ permissions:
 jobs:
   validate-and-benchmark:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -61,30 +62,22 @@ jobs:
       - name: Wait for Triton, MQTT & PLC Services Readiness
         run: |
           for i in {1..30}; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              http://127.0.0.1:8000/v2/health/ready || true)
-
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/v2/health/ready || true)
             TRITON_READY=false
             MQTT_READY=false
             PLC_READY=false
-
-            if [ "$HTTP_STATUS" = "200" ] && \
-               (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
+            if [ "$HTTP_STATUS" = "200" ] && (echo > /dev/tcp/127.0.0.1/8001) 2>/dev/null; then
               TRITON_READY=true
             fi
-
             if (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null; then
               MQTT_READY=true
             fi
-
             if python3 - <<'PY'
 from pymodbus.client import ModbusTcpClient
-
 client = ModbusTcpClient("127.0.0.1", port=5020, timeout=2)
 try:
     if not client.connect():
         raise SystemExit(1)
-
     response = client.read_holding_registers(address=0, count=1, slave=1)
     raise SystemExit(0 if response is not None and not response.isError() else 1)
 finally:
@@ -93,18 +86,13 @@ PY
             then
               PLC_READY=true
             fi
-
-            if [ "$TRITON_READY" = true ] && \
-               [ "$MQTT_READY" = true ] && \
-               [ "$PLC_READY" = true ]; then
+            if [ "$TRITON_READY" = true ] && [ "$MQTT_READY" = true ] && [ "$PLC_READY" = true ]; then
               echo "All services are ready."
               exit 0
             fi
-
             echo "Waiting ($i/30) [Triton: $TRITON_READY, MQTT: $MQTT_READY, PLC: $PLC_READY]..."
             sleep 3
           done
-
           docker compose logs --tail=100
           exit 1
 
