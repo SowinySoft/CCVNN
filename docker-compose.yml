@@ -1,4 +1,4 @@
-version: "3.8"
+#version: "3.8"
 
 services:
   # 1. PLC Modbus Hardware Simulator
@@ -65,7 +65,7 @@ services:
       - "8001:8001"  # gRPC Inference API
       - "8002:8002"  # Metrics API
     volumes:
-      - ./model_repository:/models:ro
+      - ./model_geometric:/models:ro
     environment:
       - OMP_NUM_THREADS=1
       - OMP_WAIT_POLICY=PASSIVE
@@ -194,4 +194,3 @@ networks:
 
 volumes:
   ccvnn_pgdata:
-  ccvnn-data:
