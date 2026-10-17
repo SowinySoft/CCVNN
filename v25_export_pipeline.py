@@ -223,7 +223,7 @@ instance_group [
         f.write(backbone_config)
     with open("model_geometric/ccvnn/config.pbtxt", "w") as f:
         f.write(vision_config)
-    print("✅ Generated model_geometric config.pbtxt files with fully dynamic shape support (max_batch_size: 0).")
+    print("✅ Generated model_geometric config.pbtxt files.")
 
 
 def export_and_verify_v25() -> None:
@@ -243,8 +243,8 @@ def export_and_verify_v25() -> None:
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
-    ov_inf = ov.convert_model(model_inf.cpu(), example_input=dummy_rgba.cpu())
-    ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
+    # Explicitly name and reshape the input tensor to match "input_rgba" for OpenVINO
+    ov_inf = ov.convert_model(model_inf.cpu(), example_input=dummy_rgba.cpu(), input={"input_rgba": ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_inf, "model_geometric/ccvnn_v25_backbone/1/model.xml")
 
     print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
@@ -255,11 +255,10 @@ def export_and_verify_v25() -> None:
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
-    ov_vis = ov.convert_model(model_vis.cpu(), example_input=dummy_rgba.cpu())
-    ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
+    ov_vis = ov.convert_model(model_vis.cpu(), example_input=dummy_rgba.cpu(), input={"input_rgba": ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_vis, "model_geometric/ccvnn/1/model.xml")
 
-    print("\n✅ V25 EXPORT & FULLY DYNAMIC CONFIG VALIDATION COMPLETED SUCCESSFULLY!")
+    print("\n✅ V25 EXPORT & OPEN_VINO INPUT MAPPING COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
