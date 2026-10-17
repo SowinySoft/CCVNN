@@ -29,7 +29,7 @@ def get_device() -> torch.device:
 
 
 # ==============================================================================
-# 1. GEOMETRIC CONFIGURATION & EXTRACTOR MODULES (`config`, `jacobian`, `hessian`, `gates`)
+# 1. GEOMETRIC CONFIGURATION & EXTRACTOR MODULES
 # ==============================================================================
 
 @dataclass
@@ -45,7 +45,6 @@ class JacobianExtractor(nn.Module):
         self.config = config
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Finite difference spatial gradients along height (y) and width (x)
         P1 = F.pad(x[:, :, :-1, :], (0, 0, 1, 0), mode='replicate')
         P2 = F.pad(x[:, :, 1:, :],  (0, 0, 0, 1), mode='replicate')
         P3 = F.pad(x[:, :, :, :-1], (1, 0, 0, 0), mode='replicate')
@@ -62,7 +61,6 @@ class HessianExtractor(nn.Module):
         self.config = config
 
     def forward(self, grad_y: torch.Tensor, grad_x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # Second-order Hessian curvature components
         hxx = F.pad(grad_x[:, :, :, 1:] - grad_x[:, :, :, :-1], (0, 1, 0, 0), mode='replicate')
         hyy = F.pad(grad_y[:, :, 1:, :] - grad_y[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
         hxy = F.pad(grad_x[:, :, 1:, :] - grad_x[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
@@ -75,15 +73,9 @@ class GeometricGateRouter(nn.Module):
         self.config = config
         self.jacobian = JacobianExtractor(config)
         self.hessian = HessianExtractor(config)
-        
-        # Distribution gate weights for rotational chunk partitioning
         self.dist_gate = nn.Parameter(torch.ones(config.chunk_rotations))
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
-        """
-        Routes feature tensors through the rotational distribution gate, 
-        extracts Jacobian gradients and Hessian curvature components.
-        """
         chunks = torch.chunk(x, chunks=self.config.chunk_rotations, dim=1)
         
         processed_chunks = []
@@ -148,7 +140,6 @@ class V25GeometricFeatureExtractor(nn.Module):
         E21 = (torch.abs(Gx) + self.eps) / (torch.abs(Gy) + self.eps)
         E22 = grad_mag / (P0 + 1.0)
 
-        # Route through Geometric Gate Router & Curvature Engine
         _, (hxx, hyy, hxy) = self.gate_router(x_rgba)
 
         return torch.cat([
@@ -193,7 +184,8 @@ class CCVNNV25InferencePipeline(nn.Module):
         super().__init__()
         self.extractor = V25GeometricFeatureExtractor()
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc1 = nn.Linear(25, hidden_dim)
+        # Updated in_features from 25 to 34 to match total geometric output channels
+        self.fc1 = nn.Linear(34, hidden_dim)
         self.act1 = nn.Hardswish()
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
         self.act2 = nn.Hardswish()
