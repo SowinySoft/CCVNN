@@ -9,6 +9,7 @@ import os
 import shutil
 import warnings
 import logging
+from dataclasses import dataclass
 from typing import Tuple
 
 warnings.filterwarnings('ignore')
@@ -27,10 +28,86 @@ def get_device() -> torch.device:
     return device
 
 
+# ==============================================================================
+# 1. GEOMETRIC CONFIGURATION & EXTRACTOR MODULES (`config`, `jacobian`, `hessian`, `gates`)
+# ==============================================================================
+
+@dataclass
+class GeometricConfig:
+    in_channels: int = 4
+    chunk_rotations: int = 4
+    eps: float = 1e-6
+
+
+class JacobianExtractor(nn.Module):
+    def __init__(self, config: GeometricConfig):
+        super().__init__()
+        self.config = config
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Finite difference spatial gradients along height (y) and width (x)
+        P1 = F.pad(x[:, :, :-1, :], (0, 0, 1, 0), mode='replicate')
+        P2 = F.pad(x[:, :, 1:, :],  (0, 0, 0, 1), mode='replicate')
+        P3 = F.pad(x[:, :, :, :-1], (1, 0, 0, 0), mode='replicate')
+        P4 = F.pad(x[:, :, :, 1:],  (0, 1, 0, 0), mode='replicate')
+
+        grad_y = (P2 - P1) / 2.0
+        grad_x = (P4 - P3) / 2.0
+        return grad_y, grad_x
+
+
+class HessianExtractor(nn.Module):
+    def __init__(self, config: GeometricConfig):
+        super().__init__()
+        self.config = config
+
+    def forward(self, grad_y: torch.Tensor, grad_x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # Second-order Hessian curvature components
+        hxx = F.pad(grad_x[:, :, :, 1:] - grad_x[:, :, :, :-1], (0, 1, 0, 0), mode='replicate')
+        hyy = F.pad(grad_y[:, :, 1:, :] - grad_y[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
+        hxy = F.pad(grad_x[:, :, 1:, :] - grad_x[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
+        return hxx, hyy, hxy
+
+
+class GeometricGateRouter(nn.Module):
+    def __init__(self, config: GeometricConfig):
+        super().__init__()
+        self.config = config
+        self.jacobian = JacobianExtractor(config)
+        self.hessian = HessianExtractor(config)
+        
+        # Distribution gate weights for rotational chunk partitioning
+        self.dist_gate = nn.Parameter(torch.ones(config.chunk_rotations))
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        """
+        Routes feature tensors through the rotational distribution gate, 
+        extracts Jacobian gradients and Hessian curvature components.
+        """
+        chunks = torch.chunk(x, chunks=self.config.chunk_rotations, dim=1)
+        
+        processed_chunks = []
+        for i, chunk in enumerate(chunks):
+            gate_weight = torch.sigmoid(self.dist_gate[i])
+            processed_chunks.append(chunk * gate_weight)
+
+        recombined = torch.cat(processed_chunks, dim=1)
+        grad_y, grad_x = self.jacobian(x)
+        hxx, hyy, hxy = self.hessian(grad_y, grad_x)
+        
+        return recombined, (hxx, hyy, hxy)
+
+
+# ==============================================================================
+# 2. V25 GEOMETRIC FEATURE EXTRACTION PIPELINE
+# ==============================================================================
+
 class V25GeometricFeatureExtractor(nn.Module):
     def __init__(self, eps: float = 1e-6):
         super().__init__()
         self.eps = eps
+        self.config = GeometricConfig(in_channels=4, chunk_rotations=4, eps=eps)
+        self.gate_router = GeometricGateRouter(self.config)
 
     def forward(self, x_rgba: torch.Tensor) -> torch.Tensor:
         r, g, b = x_rgba[:, 0:1, :, :], x_rgba[:, 1:2, :, :], x_rgba[:, 2:3, :, :]
@@ -71,9 +148,8 @@ class V25GeometricFeatureExtractor(nn.Module):
         E21 = (torch.abs(Gx) + self.eps) / (torch.abs(Gy) + self.eps)
         E22 = grad_mag / (P0 + 1.0)
 
-        hxx = F.pad(Gx[:, :, :, 1:] - Gx[:, :, :, :-1], (0, 1, 0, 0), mode='replicate')
-        hyy = F.pad(Gy[:, :, 1:, :] - Gy[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
-        hxy = F.pad(Gx[:, :, 1:, :] - Gx[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
+        # Route through Geometric Gate Router & Curvature Engine
+        _, (hxx, hyy, hxy) = self.gate_router(x_rgba)
 
         return torch.cat([
             P0, P1, P2, P3, P4,
@@ -155,10 +231,13 @@ class CCVNN2DVisionPipeline(nn.Module):
         return self.fc(torch.flatten(concat_feats, start_dim=1))
 
 
+# ==============================================================================
+# 3. TRITON REPOSITORY SETUP & EXPORT PIPELINE
+# ==============================================================================
+
 def write_triton_repository() -> None:
     os.makedirs("model_repository", exist_ok=True)
-    
-    # Non-destructive cleanup: Only clear V25 specific subdirectories, leaving legacy models intact
+
     for model_name in ["ccvnn_v25_backbone", "ccvnn"]:
         model_path = os.path.join("model_repository", model_name)
         if os.path.exists(model_path):
@@ -264,7 +343,7 @@ def export_and_verify_v25() -> None:
     ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_vis, "model_repository/ccvnn/1/model.xml")
 
-    print("\n✅ V25 EXPORT & UNIFIED MODEL REPOSITORY SETUP COMPLETED SUCCESSFULLY!")
+    print("\n✅ V25 EXPORT & GEOMETRIC GATE ROUTER INTEGRATION COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
