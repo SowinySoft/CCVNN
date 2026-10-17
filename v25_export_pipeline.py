@@ -1,6 +1,6 @@
 # ==============================================================================
-# CCVNN V25 PRODUCTION-GRADE DUAL-MODE GEOMETRIC PIPELINE
-# Framework: First-Order Jacobian & Second-Order Hessian Curvature Engine
+# CCVNN V25 PRODUCTION-GRADE SPATIO-TEMPORAL GEOMETRIC PIPELINE
+# Framework: 3-Frame Watcher Window (Temporal Derivatives & Optical Flow Proxies)
 # Dynamic Shapes: Fully Dynamic Batch [-1] & Spatial Resolution [-1, -1]
 # Artifacts: PyTorch ONNX (.onnx) & OpenVINO IR (.xml / .bin)
 # ==============================================================================
@@ -29,12 +29,12 @@ def get_device() -> torch.device:
 
 
 # ==============================================================================
-# 1. GEOMETRIC CONFIGURATION & EXTRACTOR MODULES
+# 1. SPATIO-TEMPORAL GEOMETRIC CONFIGURATION & EXTRACTOR MODULES
 # ==============================================================================
 
 @dataclass
 class GeometricConfig:
-    in_channels: int = 4
+    in_channels: int = 12  # 3 history frames * 4 channels (RGBA)
     chunk_rotations: int = 4
     eps: float = 1e-6
 
@@ -91,22 +91,36 @@ class GeometricGateRouter(nn.Module):
 
 
 # ==============================================================================
-# 2. V25 GEOMETRIC FEATURE EXTRACTION PIPELINE
+# 2. V25 SPATIO-TEMPORAL FEATURE EXTRACTION PIPELINE (38 CHANNELS)
 # ==============================================================================
 
-class V25GeometricFeatureExtractor(nn.Module):
-    def __init__(self, eps: float = 1e-6):
+class V25SpatioTemporalFeatureExtractor(nn.Module):
+    def __init__(self, eps: float = 1e-6, history_frames: int = 3):
         super().__init__()
         self.eps = eps
-        self.config = GeometricConfig(in_channels=4, chunk_rotations=4, eps=eps)
+        self.history_frames = history_frames
+        self.config = GeometricConfig(in_channels=4 * history_frames, chunk_rotations=4, eps=eps)
         self.gate_router = GeometricGateRouter(self.config)
 
-    def forward(self, x_rgba: torch.Tensor) -> torch.Tensor:
-        r, g, b = x_rgba[:, 0:1, :, :], x_rgba[:, 1:2, :, :], x_rgba[:, 2:3, :, :]
-        opacity = x_rgba[:, 3:4, :, :]
+    def forward(self, x_stack: torch.Tensor) -> torch.Tensor:
+        """
+        x_stack shape: [B, 12, H, W] for 3 historical RGBA frames (t-2, t-1, t)
+        """
+        channels_per_frame = 4
+        frames = torch.split(x_stack, channels_per_frame, dim=1)
+        current_frame = frames[-1] # Frame t
+        prev_frame = frames[-2]    # Frame t-1
+        
+        r, g, b = current_frame[:, 0:1, :, :], current_frame[:, 1:2, :, :], current_frame[:, 2:3, :, :]
+        opacity = current_frame[:, 3:4, :, :]
         
         I = 0.299 * r + 0.587 * g + 0.114 * b
-        
+        I_prev = 0.299 * prev_frame[:, 0:1, :, :] + 0.587 * prev_frame[:, 1:2, :, :] + 0.114 * prev_frame[:, 2:3, :, :]
+
+        # 1. Temporal Derivative Layer (Rate of Intensity Change over Watcher Window)
+        dI_dt = I - I_prev
+
+        # 2. Spatial Stencil & Gradient Derivations on Current Frame
         P0 = I
         P1 = F.pad(I[:, :, :-1, :], (0, 0, 1, 0), mode='replicate')
         P2 = F.pad(I[:, :, 1:, :],  (0, 0, 0, 1), mode='replicate')
@@ -126,6 +140,11 @@ class V25GeometricFeatureExtractor(nn.Module):
         laplacian = (P1 + P2 + P3 + P4) - 4.0 * P0
         grad_mag = torch.sqrt(Gx**2 + Gy**2 + self.eps)
         
+        # Approximate Optical Flow / Velocity Proxies
+        u_flow = -dI_dt * Gx / (grad_mag**2 + self.eps)
+        v_flow = -dI_dt * Gy / (grad_mag**2 + self.eps)
+        flow_magnitude = torch.sqrt(u_flow**2 + v_flow**2 + self.eps)
+
         phase = torch.atan2(Gy, Gx)
         Zr = P0 * torch.cos(phase)
         Zi = P0 * torch.sin(phase)
@@ -140,9 +159,9 @@ class V25GeometricFeatureExtractor(nn.Module):
         E21 = (torch.abs(Gx) + self.eps) / (torch.abs(Gy) + self.eps)
         E22 = grad_mag / (P0 + 1.0)
 
-        _, (hxx, hyy, hxy) = self.gate_router(x_rgba)
+        _, (hxx, hyy, hxy) = self.gate_router(x_stack)
 
-        return torch.cat([
+        base_34 = torch.cat([
             P0, P1, P2, P3, P4,
             C_local, opacity, mu_phi,
             sigma_phi, Gx, Gy, laplacian,
@@ -151,6 +170,10 @@ class V25GeometricFeatureExtractor(nn.Module):
             E18, E19, E20, E21, E22,
             hxx, hyy, hxy
         ], dim=1)
+
+        motion_channels = torch.cat([dI_dt, u_flow, v_flow, flow_magnitude], dim=1)
+
+        return torch.cat([base_34, motion_channels], dim=1)
 
 
 class MetaACON(nn.Module):
@@ -182,18 +205,18 @@ class ComplexConv2d(nn.Module):
 class CCVNNV25InferencePipeline(nn.Module):
     def __init__(self, hidden_dim: int = 64):
         super().__init__()
-        self.extractor = V25GeometricFeatureExtractor()
+        self.extractor = V25SpatioTemporalFeatureExtractor()
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        # Updated in_features from 25 to 34 to match total geometric output channels
-        self.fc1 = nn.Linear(34, hidden_dim)
+        # Updated in_features from 34 to 38 to account for spatio-temporal channels
+        self.fc1 = nn.Linear(38, hidden_dim)
         self.act1 = nn.Hardswish()
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
         self.act2 = nn.Hardswish()
         self.fc3 = nn.Linear(hidden_dim // 2, 1)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x_rgba: torch.Tensor) -> torch.Tensor:
-        spatial = self.extractor(x_rgba)
+    def forward(self, x_stack: torch.Tensor) -> torch.Tensor:
+        spatial = self.extractor(x_stack)
         vec = self.pool(spatial).flatten(1)
         x = self.act1(self.fc1(vec))
         x = self.act2(self.fc2(x))
@@ -203,15 +226,15 @@ class CCVNNV25InferencePipeline(nn.Module):
 class CCVNN2DVisionPipeline(nn.Module):
     def __init__(self, out_channels: int = 32, num_classes: int = 10):
         super().__init__()
-        self.extractor = V25GeometricFeatureExtractor()
+        self.extractor = V25SpatioTemporalFeatureExtractor()
         self.complex_conv = ComplexConv2d(in_channels=1, out_channels=out_channels)
         self.acon_r = MetaACON(out_channels)
         self.acon_i = MetaACON(out_channels)
         self.pool = nn.AdaptiveAvgPool2d((8, 8))
         self.fc = nn.Linear(out_channels * 2 * 8 * 8, num_classes)
 
-    def forward(self, x_rgba: torch.Tensor) -> torch.Tensor:
-        spatial = self.extractor(x_rgba)
+    def forward(self, x_stack: torch.Tensor) -> torch.Tensor:
+        spatial = self.extractor(x_stack)
         x_r = spatial[:, 13:14, :, :]
         x_i = spatial[:, 14:15, :, :]
         y_r, y_i = self.complex_conv(x_r, x_i)
@@ -224,7 +247,7 @@ class CCVNN2DVisionPipeline(nn.Module):
 
 
 # ==============================================================================
-# 3. TRITON REPOSITORY SETUP & EXPORT PIPELINE
+# 3. TRITON REPOSITORY SETUP & EXPORT PIPELINE (12 INPUT CHANNELS)
 # ==============================================================================
 
 def write_triton_repository() -> None:
@@ -243,9 +266,9 @@ max_batch_size: 0
 
 input [
   {
-    name: "input_rgba"
+    name: "input_stack"
     data_type: TYPE_FP32
-    dims: [ -1, 4, -1, -1 ]
+    dims: [ -1, 12, -1, -1 ]
   }
 ]
 
@@ -271,9 +294,9 @@ max_batch_size: 0
 
 input [
   {
-    name: "input_rgba"
+    name: "input_stack"
     data_type: TYPE_FP32
-    dims: [ -1, 4, -1, -1 ]
+    dims: [ -1, 12, -1, -1 ]
   }
 ]
 
@@ -297,45 +320,46 @@ instance_group [
         f.write(backbone_config)
     with open("model_repository/ccvnn/config.pbtxt", "w") as f:
         f.write(vision_config)
-    print("✅ Generated model_repository config.pbtxt files.")
+    print("✅ Generated Spatio-Temporal model_repository config.pbtxt files.")
 
 
 def export_and_verify_v25() -> None:
     device = get_device()
     write_triton_repository()
 
-    dummy_rgba = torch.randn(1, 4, 64, 64, dtype=torch.float32, device=device)
+    # 12-channel tensor stack representing 3 historical RGBA frames (T=3)
+    dummy_stack = torch.randn(1, 12, 64, 64, dtype=torch.float32, device=device)
     dynamic_axes_spec = {
-        "input_rgba": {0: "batch_size", 2: "height", 3: "width"}
+        "input_stack": {0: "batch_size", 2: "height", 3: "width"}
     }
 
-    print("\n--- Exporting Mode 1: ccvnn_v25_backbone ---")
+    print("\n--- Exporting Mode 1: ccvnn_v25_backbone (Spatio-Temporal) ---")
     model_inf = CCVNNV25InferencePipeline().to(device).eval()
     backbone_onnx_path = "model_repository/ccvnn_v25_backbone/1/model.onnx"
     torch.onnx.export(
-        model_inf, dummy_rgba, backbone_onnx_path,
-        input_names=["input_rgba"], output_names=["hazard_prob"],
+        model_inf, dummy_stack, backbone_onnx_path,
+        input_names=["input_stack"], output_names=["hazard_prob"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
     ov_inf = ov.convert_model(backbone_onnx_path)
-    ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
+    ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 12, -1, -1])})
     ov.save_model(ov_inf, "model_repository/ccvnn_v25_backbone/1/model.xml")
 
-    print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
+    print("\n--- Exporting Mode 2: ccvnn (Vision Engine - Spatio-Temporal) ---")
     model_vis = CCVNN2DVisionPipeline().to(device).eval()
     vision_onnx_path = "model_repository/ccvnn/1/model.onnx"
     torch.onnx.export(
-        model_vis, dummy_rgba, vision_onnx_path,
-        input_names=["input_rgba"], output_names=["output_logits"],
+        model_vis, dummy_stack, vision_onnx_path,
+        input_names=["input_stack"], output_names=["output_logits"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
     ov_vis = ov.convert_model(vision_onnx_path)
-    ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
+    ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 12, -1, -1])})
     ov.save_model(ov_vis, "model_repository/ccvnn/1/model.xml")
 
-    print("\n✅ V25 EXPORT & GEOMETRIC GATE ROUTER INTEGRATION COMPLETED SUCCESSFULLY!")
+    print("\n✅ V25 SPATIO-TEMPORAL EXPORT & WATCHER WINDOW INTEGRATION COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
