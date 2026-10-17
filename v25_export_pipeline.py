@@ -207,7 +207,7 @@ class CCVNNV25InferencePipeline(nn.Module):
         super().__init__()
         self.extractor = V25SpatioTemporalFeatureExtractor()
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        # Updated in_features from 34 to 38 to account for spatio-temporal channels
+        # FIXED: Set in_features to 38 matching total spatio-temporal channels
         self.fc1 = nn.Linear(38, hidden_dim)
         self.act1 = nn.Hardswish()
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
@@ -327,7 +327,6 @@ def export_and_verify_v25() -> None:
     device = get_device()
     write_triton_repository()
 
-    # 12-channel tensor stack representing 3 historical RGBA frames (T=3)
     dummy_stack = torch.randn(1, 12, 64, 64, dtype=torch.float32, device=device)
     dynamic_axes_spec = {
         "input_stack": {0: "batch_size", 2: "height", 3: "width"}
