@@ -36,14 +36,6 @@ def get_device() -> torch.device:
 # ==============================================================================
 
 class V25GeometricFeatureExtractor(nn.Module):
-    """
-    Transforms [Batch, 4, H, W] RGBA Tensors into [Batch, 25, H, W] Feature Space:
-    - Base Stencil & Statistics (P0-P4, C_local, opacity, mu, sigma)
-    - First-Order Spatial Gradients & Jacobian (Gx, Gy, grad_mag, Laplacian)
-    - Complex Phase Components (Zr, Zi)
-    - Color Metrics (chroma, saturation) & E18-E22 Expansion Nodes
-    - Second-Order Hessian Curvature Matrix (hxx, hyy, hxy)
-    """
     def __init__(self, eps: float = 1e-6):
         super().__init__()
         self.eps = eps
@@ -52,10 +44,8 @@ class V25GeometricFeatureExtractor(nn.Module):
         r, g, b = x_rgba[:, 0:1, :, :], x_rgba[:, 1:2, :, :], x_rgba[:, 2:3, :, :]
         opacity = x_rgba[:, 3:4, :, :]
         
-        # Luminance
         I = 0.299 * r + 0.587 * g + 0.114 * b
         
-        # 5-Point Cross Stencil Pads (Preserves H x W)
         P0 = I
         P1 = F.pad(I[:, :, :-1, :], (0, 0, 1, 0), mode='replicate')
         P2 = F.pad(I[:, :, 1:, :],  (0, 0, 0, 1), mode='replicate')
@@ -70,42 +60,37 @@ class V25GeometricFeatureExtractor(nn.Module):
         mu_phi = torch.mean(stencil, dim=1, keepdim=True)
         sigma_phi = torch.var(stencil, dim=1, keepdim=True, unbiased=False)
         
-        # --- First-Order Jacobian & Spatial Gradients ---
         Gx = (P4 - P3) / 2.0
         Gy = (P2 - P1) / 2.0
         laplacian = (P1 + P2 + P3 + P4) - 4.0 * P0
         grad_mag = torch.sqrt(Gx**2 + Gy**2 + self.eps)
         
-        # Phase components
         phase = torch.atan2(Gy, Gx)
         Zr = P0 * torch.cos(phase)
         Zi = P0 * torch.sin(phase)
         
-        # Color metrics
         sum_rgb = r + g + b + self.eps
         min_rgb = torch.min(torch.cat([r, g, b], dim=1), dim=1, keepdim=True)[0]
         saturation = 1.0 - (3.0 * min_rgb / sum_rgb)
         
-        # --- E18 - E22 Expansion Nodes ---
         E18 = torch.clamp((r - g) / (r + g + self.eps) * saturation, min=0.0)
         E19 = 1.0 / (1.0 + grad_mag)
         E20 = sigma_phi / (torch.abs(mu_phi) + self.eps)
         E21 = (torch.abs(Gx) + self.eps) / (torch.abs(Gy) + self.eps)
         E22 = grad_mag / (P0 + 1.0)
 
-        # --- Second-Order Hessian Curvature Components (hxx, hyy, hxy) ---
         hxx = F.pad(Gx[:, :, :, 1:] - Gx[:, :, :, :-1], (0, 1, 0, 0), mode='replicate')
         hyy = F.pad(Gy[:, :, 1:, :] - Gy[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
         hxy = F.pad(Gx[:, :, 1:, :] - Gx[:, :, :-1, :], (0, 0, 0, 1), mode='replicate')
 
         return torch.cat([
-            P0, P1, P2, P3, P4,             # Channels 0-4
-            C_local, opacity, mu_phi,       # Channels 5-7
-            sigma_phi, Gx, Gy, laplacian,   # Channels 8-11
-            grad_mag, Zr, Zi,               # Channels 12-14
-            (r - g) / (b + self.eps), saturation, # Channels 15-16
-            E18, E19, E20, E21, E22,        # Channels 17-21
-            hxx, hyy, hxy                   # Channels 22-24 (Total 25 Channels)
+            P0, P1, P2, P3, P4,
+            C_local, opacity, mu_phi,
+            sigma_phi, Gx, Gy, laplacian,
+            grad_mag, Zr, Zi,
+            (r - g) / (b + self.eps), saturation,
+            E18, E19, E20, E21, E22,
+            hxx, hyy, hxy
         ], dim=1)
 
 
@@ -135,17 +120,11 @@ class ComplexConv2d(nn.Module):
         return y_r, y_i
 
 
-# ==============================================================================
-# 3. CCVNN V25 DUAL-MODE PIPELINE WRAPPERS
-# ==============================================================================
-
 class CCVNNV25InferencePipeline(nn.Module):
-    """Mode 1: Inference Backbone leveraging full 25-channel V25 geometric features."""
     def __init__(self, hidden_dim: int = 64):
         super().__init__()
         self.extractor = V25GeometricFeatureExtractor()
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        
         self.fc1 = nn.Linear(25, hidden_dim)
         self.act1 = nn.Hardswish()
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
@@ -162,7 +141,6 @@ class CCVNNV25InferencePipeline(nn.Module):
 
 
 class CCVNN2DVisionPipeline(nn.Module):
-    """Mode 2: Vision Engine using complex phase features derived from V25 extractor."""
     def __init__(self, out_channels: int = 32, num_classes: int = 10):
         super().__init__()
         self.extractor = V25GeometricFeatureExtractor()
@@ -176,11 +154,9 @@ class CCVNN2DVisionPipeline(nn.Module):
         spatial = self.extractor(x_rgba)
         x_r = spatial[:, 13:14, :, :]
         x_i = spatial[:, 14:15, :, :]
-
         y_r, y_i = self.complex_conv(x_r, x_i)
         y_r = self.acon_r(y_r)
         y_i = self.acon_i(y_i)
-
         y_r = self.pool(y_r)
         y_i = self.pool(y_i)
         concat_feats = torch.cat([y_r, y_i], dim=1)
@@ -188,19 +164,16 @@ class CCVNN2DVisionPipeline(nn.Module):
 
 
 # ==============================================================================
-# 4. TRITON REPOSITORY & MULTI-BACKEND CONFIGURATION
+# 4. ISOLATED GEOMETRIC REPOSITORY CONFIGURATION (`model_geometric`)
 # ==============================================================================
 
 def write_triton_repository() -> None:
-    os.makedirs("model_repository", exist_ok=True)
-    
-    # Non-destructive cleaning: Only clean V25 specific subdirectories
-    for model_name in ["ccvnn_v25_backbone", "ccvnn"]:
-        model_path = os.path.join("model_repository", model_name)
-        if os.path.exists(model_path):
-            shutil.rmtree(model_path)
-            print(f"🧹 Cleaned legacy model subdirectory: {model_name}.")
-        os.makedirs(os.path.join(model_path, "1"), exist_ok=True)
+    if os.path.exists("model_geometric"):
+        shutil.rmtree("model_geometric")
+        print("🧹 Cleaned legacy model_geometric.")
+
+    os.makedirs("model_geometric/ccvnn_v25_backbone/1", exist_ok=True)
+    os.makedirs("model_geometric/ccvnn/1", exist_ok=True)
 
     backbone_config = """name: "ccvnn_v25_backbone"
 backend: "openvino"
@@ -268,11 +241,11 @@ instance_group [
 ]
 """
     
-    with open("model_repository/ccvnn_v25_backbone/config.pbtxt", "w") as f:
+    with open("model_geometric/ccvnn_v25_backbone/config.pbtxt", "w") as f:
         f.write(backbone_config)
-    with open("model_repository/ccvnn/config.pbtxt", "w") as f:
+    with open("model_geometric/ccvnn/config.pbtxt", "w") as f:
         f.write(vision_config)
-    print("✅ Generated Triton config.pbtxt with full dynamic bounds [-1, 4, -1, -1].")
+    print("✅ Generated model_geometric config.pbtxt files with OpenVINO backend.")
 
 
 # ==============================================================================
@@ -288,57 +261,48 @@ def export_and_verify_v25() -> None:
         "input_rgba": {0: "batch_size", 2: "height", 3: "width"}
     }
 
-    # --- Mode 1: Inference Backbone Export (ONNX & OpenVINO) ---
     print("\n--- Exporting Mode 1: ccvnn_v25_backbone ---")
     model_inf = CCVNNV25InferencePipeline().to(device).eval()
-    
     torch.onnx.export(
-        model_inf, dummy_rgba, "model_repository/ccvnn_v25_backbone/1/model.onnx",
+        model_inf, dummy_rgba, "model_geometric/ccvnn_v25_backbone/1/model.onnx",
         input_names=["input_rgba"], output_names=["hazard_prob"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
-    print("✅ Saved PyTorch ONNX: ccvnn_v25_backbone/1/model.onnx")
+    print("✅ Saved PyTorch ONNX: model_geometric/ccvnn_v25_backbone/1/model.onnx")
 
     ov_inf = ov.convert_model(model_inf.cpu(), example_input=dummy_rgba.cpu())
     ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
-    ov.save_model(ov_inf, "model_repository/ccvnn_v25_backbone/1/model.xml")
-    print("✅ Saved OpenVINO IR: ccvnn_v25_backbone/1/model.xml & model.bin")
+    ov.save_model(ov_inf, "model_geometric/ccvnn_v25_backbone/1/model.xml")
+    print("✅ Saved OpenVINO IR: model_geometric/ccvnn_v25_backbone/1/model.xml & model.bin")
 
-
-    # --- Mode 2: Vision Engine Export (ONNX & OpenVINO) ---
     print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
     model_vis = CCVNN2DVisionPipeline().to(device).eval()
-    
     torch.onnx.export(
-        model_vis, dummy_rgba, "model_repository/ccvnn/1/model.onnx",
+        model_vis, dummy_rgba, "model_geometric/ccvnn/1/model.onnx",
         input_names=["input_rgba"], output_names=["output_logits"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
-    print("✅ Saved PyTorch ONNX: ccvnn/1/model.onnx")
+    print("✅ Saved PyTorch ONNX: model_geometric/ccvnn/1/model.onnx")
 
     ov_vis = ov.convert_model(model_vis.cpu(), example_input=dummy_rgba.cpu())
     ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
-    ov.save_model(ov_vis, "model_repository/ccvnn/1/model.xml")
-    print("✅ Saved OpenVINO IR: ccvnn/1/model.xml & model.bin")
+    ov.save_model(ov_vis, "model_geometric/ccvnn/1/model.xml")
+    print("✅ Saved OpenVINO IR: model_geometric/ccvnn/1/model.xml & model.bin")
 
-
-    # ==========================================================================
-    # 6. RUNTIME VERIFICATION (DYNAMIC BATCH & DYNAMIC RESOLUTION)
-    # ==========================================================================
     print("\n==============================================================")
     print(" RUNNING FULLY DYNAMIC OPEN_VINO RUNTIME VALIDATION")
-    print("==============================================================l")
+    print("==============================================================")
     core = ov.Core()
     test_cases = [(1, 32, 32), (4, 64, 64), (16, 128, 128), (32, 96, 96)]
 
-    compiled_inf = core.compile_model("model_repository/ccvnn_v25_backbone/1/model.xml", "CPU")
+    compiled_inf = core.compile_model("model_geometric/ccvnn_v25_backbone/1/model.xml", "CPU")
     for b_size, h, w in test_cases:
         test_in = np.random.randn(b_size, 4, h, w).astype(np.float32)
         res = compiled_inf([test_in])[compiled_inf.output(0)]
         assert res.shape == (b_size, 1), f"Backbone shape mismatch: got {res.shape}"
         print(f" [V25 Backbone] Batch: {b_size:2d} | Res: {h}x{w} -> Output: {res.shape}")
 
-    compiled_vis = core.compile_model("model_repository/ccvnn/1/model.xml", "CPU")
+    compiled_vis = core.compile_model("model_geometric/ccvnn/1/model.xml", "CPU")
     for b_size, h, w in test_cases:
         test_in = np.random.randn(b_size, 4, h, w).astype(np.float32)
         res = compiled_vis([test_in])[compiled_vis.output(0)]
