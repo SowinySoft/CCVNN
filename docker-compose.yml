@@ -55,7 +55,7 @@ services:
     networks:
       - ccvnn-net
 
-  # 3. Core Triton Inference Server (v12 Baseline + v17 Compatibility)
+  # 3. Core Triton Inference Server (V25 Geometric Framework)
   triton-server:
     image: nvcr.io/nvidia/tritonserver:26.08-py3
     container_name: tritonserver_prod
