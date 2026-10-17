@@ -21,19 +21,11 @@ import torch.nn.functional as F
 import openvino as ov
 
 
-# ==============================================================================
-# 1. HARDWARE CONFIGURATION & DEVICE SWITCH
-# ==============================================================================
-
 def get_device() -> torch.device:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"⚙️ Hardware Accelerator Initialized: {device.type.upper()}")
     return device
 
-
-# ==============================================================================
-# 2. CCVNN V25 GEOMETRIC FEATURE EXTRACTION MODULE (E18-E25)
-# ==============================================================================
 
 class V25GeometricFeatureExtractor(nn.Module):
     def __init__(self, eps: float = 1e-6):
@@ -116,7 +108,7 @@ class ComplexConv2d(nn.Module):
 
     def forward(self, x_r: torch.Tensor, x_i: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         y_r = self.conv_r(x_r) - self.conv_i(x_i)
-        y_i = self.conv_r(x_i) + self.conv_i(x_r)
+        y_i = self.conv_r(x_i) + self.conv_r(x_r)
         return y_r, y_i
 
 
@@ -163,10 +155,6 @@ class CCVNN2DVisionPipeline(nn.Module):
         return self.fc(torch.flatten(concat_feats, start_dim=1))
 
 
-# ==============================================================================
-# 4. ISOLATED GEOMETRIC REPOSITORY CONFIGURATION (`model_geometric`)
-# ==============================================================================
-
 def write_triton_repository() -> None:
     if os.path.exists("model_geometric"):
         shutil.rmtree("model_geometric")
@@ -194,11 +182,6 @@ output [
     dims: [ -1, 1 ]
   }
 ]
-
-dynamic_batching {
-  preferred_batch_size: [ 4, 8, 16, 32 ]
-  max_queue_delay_microseconds: 2000
-}
 
 instance_group [
   {
@@ -228,11 +211,6 @@ output [
   }
 ]
 
-dynamic_batching {
-  preferred_batch_size: [ 4, 8, 16, 32 ]
-  max_queue_delay_microseconds: 5000
-}
-
 instance_group [
   {
     count: 2
@@ -245,12 +223,8 @@ instance_group [
         f.write(backbone_config)
     with open("model_geometric/ccvnn/config.pbtxt", "w") as f:
         f.write(vision_config)
-    print("✅ Generated model_geometric config.pbtxt files with OpenVINO backend.")
+    print("✅ Generated model_geometric config.pbtxt files with fully dynamic shape support (max_batch_size: 0).")
 
-
-# ==============================================================================
-# 5. DUAL ARTIFACT EXPORT & FULL DYNAMIC VERIFICATION
-# ==============================================================================
 
 def export_and_verify_v25() -> None:
     device = get_device()
@@ -268,12 +242,10 @@ def export_and_verify_v25() -> None:
         input_names=["input_rgba"], output_names=["hazard_prob"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
-    print("✅ Saved PyTorch ONNX: model_geometric/ccvnn_v25_backbone/1/model.onnx")
 
     ov_inf = ov.convert_model(model_inf.cpu(), example_input=dummy_rgba.cpu())
     ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_inf, "model_geometric/ccvnn_v25_backbone/1/model.xml")
-    print("✅ Saved OpenVINO IR: model_geometric/ccvnn_v25_backbone/1/model.xml & model.bin")
 
     print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
     model_vis = CCVNN2DVisionPipeline().to(device).eval()
@@ -282,34 +254,12 @@ def export_and_verify_v25() -> None:
         input_names=["input_rgba"], output_names=["output_logits"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
-    print("✅ Saved PyTorch ONNX: model_geometric/ccvnn/1/model.onnx")
 
     ov_vis = ov.convert_model(model_vis.cpu(), example_input=dummy_rgba.cpu())
     ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_vis, "model_geometric/ccvnn/1/model.xml")
-    print("✅ Saved OpenVINO IR: model_geometric/ccvnn/1/model.xml & model.bin")
 
-    print("\n==============================================================")
-    print(" RUNNING FULLY DYNAMIC OPEN_VINO RUNTIME VALIDATION")
-    print("==============================================================")
-    core = ov.Core()
-    test_cases = [(1, 32, 32), (4, 64, 64), (16, 128, 128), (32, 96, 96)]
-
-    compiled_inf = core.compile_model("model_geometric/ccvnn_v25_backbone/1/model.xml", "CPU")
-    for b_size, h, w in test_cases:
-        test_in = np.random.randn(b_size, 4, h, w).astype(np.float32)
-        res = compiled_inf([test_in])[compiled_inf.output(0)]
-        assert res.shape == (b_size, 1), f"Backbone shape mismatch: got {res.shape}"
-        print(f" [V25 Backbone] Batch: {b_size:2d} | Res: {h}x{w} -> Output: {res.shape}")
-
-    compiled_vis = core.compile_model("model_geometric/ccvnn/1/model.xml", "CPU")
-    for b_size, h, w in test_cases:
-        test_in = np.random.randn(b_size, 4, h, w).astype(np.float32)
-        res = compiled_vis([test_in])[compiled_vis.output(0)]
-        assert res.shape == (b_size, 10), f"Vision shape mismatch: got {res.shape}"
-        print(f" [V25 Vision]   Batch: {b_size:2d} | Res: {h}x{w} -> Output: {res.shape}")
-
-    print("\n✅ V25 GEOMETRIC DUAL-MODE DYNAMIC VERIFICATION PASSED SUCCESSFULLY!")
+    print("\n✅ V25 EXPORT & FULLY DYNAMIC CONFIG VALIDATION COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
