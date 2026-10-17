@@ -37,3 +37,4 @@ class GeometricGateRouter(nn.Module):
         hxx, hyy, hxy = self.hessian(grad_y, grad_x)
         
         return recombined, (hxx, hyy, hxy)
+
