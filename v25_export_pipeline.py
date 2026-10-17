@@ -156,12 +156,15 @@ class CCVNN2DVisionPipeline(nn.Module):
 
 
 def write_triton_repository() -> None:
-    if os.path.exists("model_geometric"):
-        shutil.rmtree("model_geometric")
-        print("🧹 Cleaned legacy model_geometric.")
-
-    os.makedirs("model_geometric/ccvnn_v25_backbone/1", exist_ok=True)
-    os.makedirs("model_geometric/ccvnn/1", exist_ok=True)
+    os.makedirs("model_repository", exist_ok=True)
+    
+    # Non-destructive cleanup: Only clear V25 specific subdirectories, leaving legacy models intact
+    for model_name in ["ccvnn_v25_backbone", "ccvnn"]:
+        model_path = os.path.join("model_repository", model_name)
+        if os.path.exists(model_path):
+            shutil.rmtree(model_path)
+            print(f"🧹 Cleaned legacy subdirectory: {model_name}.")
+        os.makedirs(os.path.join(model_path, "1"), exist_ok=True)
 
     backbone_config = """name: "ccvnn_v25_backbone"
 backend: "openvino"
@@ -219,11 +222,11 @@ instance_group [
 ]
 """
     
-    with open("model_geometric/ccvnn_v25_backbone/config.pbtxt", "w") as f:
+    with open("model_repository/ccvnn_v25_backbone/config.pbtxt", "w") as f:
         f.write(backbone_config)
-    with open("model_geometric/ccvnn/config.pbtxt", "w") as f:
+    with open("model_repository/ccvnn/config.pbtxt", "w") as f:
         f.write(vision_config)
-    print("✅ Generated model_geometric config.pbtxt files.")
+    print("✅ Generated model_repository config.pbtxt files.")
 
 
 def export_and_verify_v25() -> None:
@@ -237,21 +240,20 @@ def export_and_verify_v25() -> None:
 
     print("\n--- Exporting Mode 1: ccvnn_v25_backbone ---")
     model_inf = CCVNNV25InferencePipeline().to(device).eval()
-    backbone_onnx_path = "model_geometric/ccvnn_v25_backbone/1/model.onnx"
+    backbone_onnx_path = "model_repository/ccvnn_v25_backbone/1/model.onnx"
     torch.onnx.export(
         model_inf, dummy_rgba, backbone_onnx_path,
         input_names=["input_rgba"], output_names=["hazard_prob"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
-    # Convert OpenVINO IR directly from the validated ONNX model to preserve exact input tensor names
     ov_inf = ov.convert_model(backbone_onnx_path)
     ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
-    ov.save_model(ov_inf, "model_geometric/ccvnn_v25_backbone/1/model.xml")
+    ov.save_model(ov_inf, "model_repository/ccvnn_v25_backbone/1/model.xml")
 
     print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
     model_vis = CCVNN2DVisionPipeline().to(device).eval()
-    vision_onnx_path = "model_geometric/ccvnn/1/model.onnx"
+    vision_onnx_path = "model_repository/ccvnn/1/model.onnx"
     torch.onnx.export(
         model_vis, dummy_rgba, vision_onnx_path,
         input_names=["input_rgba"], output_names=["output_logits"],
@@ -260,9 +262,9 @@ def export_and_verify_v25() -> None:
 
     ov_vis = ov.convert_model(vision_onnx_path)
     ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
-    ov.save_model(ov_vis, "model_geometric/ccvnn/1/model.xml")
+    ov.save_model(ov_vis, "model_repository/ccvnn/1/model.xml")
 
-    print("\n✅ V25 EXPORT & ONNX-BASED OPENVINO CONVERSION COMPLETED SUCCESSFULLY!")
+    print("\n✅ V25 EXPORT & UNIFIED MODEL REPOSITORY SETUP COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
