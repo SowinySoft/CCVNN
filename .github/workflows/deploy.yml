@@ -46,7 +46,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt "pymodbus==3.7.4" pytest pydantic
+          pip install "tritonclient[grpc]" numpy opencv-python-headless paho-mqtt "pymodbus==3.7.4" pytest pydantic PyYAML
 
       - name: Validate Dashboard JSON Syntax
         run: |
