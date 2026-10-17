@@ -237,28 +237,32 @@ def export_and_verify_v25() -> None:
 
     print("\n--- Exporting Mode 1: ccvnn_v25_backbone ---")
     model_inf = CCVNNV25InferencePipeline().to(device).eval()
+    backbone_onnx_path = "model_geometric/ccvnn_v25_backbone/1/model.onnx"
     torch.onnx.export(
-        model_inf, dummy_rgba, "model_geometric/ccvnn_v25_backbone/1/model.onnx",
+        model_inf, dummy_rgba, backbone_onnx_path,
         input_names=["input_rgba"], output_names=["hazard_prob"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
-    # Explicitly name and reshape the input tensor to match "input_rgba" for OpenVINO
-    ov_inf = ov.convert_model(model_inf.cpu(), example_input=dummy_rgba.cpu(), input={"input_rgba": ov.PartialShape([-1, 4, -1, -1])})
+    # Convert OpenVINO IR directly from the validated ONNX model to preserve exact input tensor names
+    ov_inf = ov.convert_model(backbone_onnx_path)
+    ov_inf.reshape({ov_inf.input(0): ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_inf, "model_geometric/ccvnn_v25_backbone/1/model.xml")
 
     print("\n--- Exporting Mode 2: ccvnn (Vision Engine) ---")
     model_vis = CCVNN2DVisionPipeline().to(device).eval()
+    vision_onnx_path = "model_geometric/ccvnn/1/model.onnx"
     torch.onnx.export(
-        model_vis, dummy_rgba, "model_geometric/ccvnn/1/model.onnx",
+        model_vis, dummy_rgba, vision_onnx_path,
         input_names=["input_rgba"], output_names=["output_logits"],
         dynamic_axes=dynamic_axes_spec, opset_version=14
     )
 
-    ov_vis = ov.convert_model(model_vis.cpu(), example_input=dummy_rgba.cpu(), input={"input_rgba": ov.PartialShape([-1, 4, -1, -1])})
+    ov_vis = ov.convert_model(vision_onnx_path)
+    ov_vis.reshape({ov_vis.input(0): ov.PartialShape([-1, 4, -1, -1])})
     ov.save_model(ov_vis, "model_geometric/ccvnn/1/model.xml")
 
-    print("\n✅ V25 EXPORT & OPEN_VINO INPUT MAPPING COMPLETED SUCCESSFULLY!")
+    print("\n✅ V25 EXPORT & ONNX-BASED OPENVINO CONVERSION COMPLETED SUCCESSFULLY!")
 
 
 if __name__ == "__main__":
